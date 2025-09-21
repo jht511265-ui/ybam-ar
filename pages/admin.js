@@ -21,6 +21,7 @@ export default function Admin() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [authToken, setAuthToken] = useState(null);
+  const [message, setMessage] = useState('');
   const router = useRouter();
 
   useEffect(() => {
@@ -37,6 +38,7 @@ export default function Admin() {
 
   const fetchProjects = async (token) => {
     try {
+      setIsLoading(true);
       const response = await fetch('/api/projects', {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -48,9 +50,12 @@ export default function Admin() {
         setProjects(data);
       } else if (response.status === 401) {
         handleLogout();
+      } else {
+        setMessage('获取项目失败');
       }
     } catch (error) {
       console.error('获取项目失败:', error);
+      setMessage('网络错误，请重试');
     } finally {
       setIsLoading(false);
     }
@@ -69,11 +74,12 @@ export default function Admin() {
     
     if (!authToken) return;
     if (!formData.name || !formData.originalImage || !formData.videoURL || !formData.markerImage) {
-      alert('请填写所有字段');
+      setMessage('请填写所有字段');
       return;
     }
 
     setIsLoading(true);
+    setMessage('');
 
     try {
       const response = await fetch('/api/projects', {
@@ -89,14 +95,15 @@ export default function Admin() {
         setShowCreateModal(false);
         setFormData({ name: '', originalImage: '', videoURL: '', markerImage: '' });
         fetchProjects(authToken);
-        alert('项目创建成功！');
+        setMessage('项目创建成功！');
+        setTimeout(() => setMessage(''), 3000);
       } else {
         const error = await response.json();
-        alert('创建失败: ' + error.message);
+        setMessage('创建失败: ' + error.message);
       }
     } catch (error) {
       console.error('创建项目失败:', error);
-      alert('创建失败，请重试');
+      setMessage('创建失败，请重试');
     } finally {
       setIsLoading(false);
     }
@@ -107,11 +114,12 @@ export default function Admin() {
     
     if (!authToken) return;
     if (!editFormData.name) {
-      alert('项目名称不能为空');
+      setMessage('项目名称不能为空');
       return;
     }
 
     setIsLoading(true);
+    setMessage('');
 
     try {
       const response = await fetch('/api/projects', {
@@ -127,14 +135,15 @@ export default function Admin() {
         setShowEditModal(false);
         setEditFormData({ id: '', name: '', originalImage: '', videoURL: '', markerImage: '' });
         fetchProjects(authToken);
-        alert('项目更新成功！');
+        setMessage('项目更新成功！');
+        setTimeout(() => setMessage(''), 3000);
       } else {
         const error = await response.json();
-        alert('更新失败: ' + error.message);
+        setMessage('更新失败: ' + error.message);
       }
     } catch (error) {
       console.error('更新项目失败:', error);
-      alert('更新失败，请重试');
+      setMessage('更新失败，请重试');
     } finally {
       setIsLoading(false);
     }
@@ -142,6 +151,9 @@ export default function Admin() {
 
   const handleDelete = async (id) => {
     if (!confirm('确定要删除这个项目吗？此操作不可恢复。') || !authToken) return;
+
+    setIsLoading(true);
+    setMessage('');
 
     try {
       const response = await fetch('/api/projects', {
@@ -155,14 +167,17 @@ export default function Admin() {
 
       if (response.ok) {
         fetchProjects(authToken);
-        alert('项目删除成功！');
+        setMessage('项目删除成功！');
+        setTimeout(() => setMessage(''), 3000);
       } else {
         const error = await response.json();
-        alert('删除失败: ' + error.message);
+        setMessage('删除失败: ' + error.message);
       }
     } catch (error) {
       console.error('删除项目失败:', error);
-      alert('删除失败，请重试');
+      setMessage('删除失败，请重试');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -170,11 +185,20 @@ export default function Admin() {
     setEditFormData({
       id: project._id,
       name: project.name,
-      originalImage: project.originalImage,
-      videoURL: project.videoURL,
-      markerImage: project.markerImage
+      originalImage: project.originalImage || '',
+      videoURL: project.videoURL || '',
+      markerImage: project.markerImage || ''
     });
     setShowEditModal(true);
+    setMessage('');
+  };
+
+  const closeModals = () => {
+    setShowCreateModal(false);
+    setShowEditModal(false);
+    setFormData({ name: '', originalImage: '', videoURL: '', markerImage: '' });
+    setEditFormData({ id: '', name: '', originalImage: '', videoURL: '', markerImage: '' });
+    setMessage('');
   };
 
   return (
@@ -261,6 +285,16 @@ export default function Admin() {
           transform: translateY(-2px);
         }
         
+        .btn-success {
+          background-color: #28a745;
+          color: white;
+        }
+        
+        .btn-success:hover {
+          background-color: #218838;
+          transform: translateY(-2px);
+        }
+        
         .admin-content {
           background-color: rgba(0, 0, 0, 0.7);
           border-radius: 20px;
@@ -272,6 +306,25 @@ export default function Admin() {
           justify-content: space-between;
           align-items: center;
           margin-bottom: 2rem;
+        }
+        
+        .message {
+          padding: 10px 15px;
+          border-radius: 5px;
+          margin-bottom: 15px;
+          text-align: center;
+        }
+        
+        .message.success {
+          background-color: #d4edda;
+          color: #155724;
+          border: 1px solid #c3e6cb;
+        }
+        
+        .message.error {
+          background-color: #f8d7da;
+          color: #721c24;
+          border: 1px solid #f5c6cb;
         }
         
         .projects-grid {
@@ -318,10 +371,21 @@ export default function Admin() {
           object-fit: cover;
         }
         
+        .project-info {
+          margin: 10px 0;
+        }
+        
+        .project-info p {
+          margin: 5px 0;
+          font-size: 0.9rem;
+          color: #e1e1e1;
+        }
+        
         .project-actions {
           display: flex;
           justify-content: space-between;
           margin-top: 15px;
+          gap: 10px;
         }
         
         .modal {
@@ -359,6 +423,9 @@ export default function Admin() {
           font-size: 1.5rem;
           cursor: pointer;
           color: #fdbb2d;
+          background: none;
+          border: none;
+          padding: 0;
         }
         
         .form-group {
@@ -369,6 +436,7 @@ export default function Admin() {
           display: block;
           margin-bottom: 8px;
           color: #fdbb2d;
+          font-weight: 600;
         }
         
         .form-group input,
@@ -379,6 +447,13 @@ export default function Admin() {
           border: 2px solid #4e54c8;
           background-color: rgba(0, 0, 0, 0.3);
           color: white;
+          font-size: 1rem;
+        }
+        
+        .form-group input:focus,
+        .form-group textarea:focus {
+          outline: none;
+          border-color: #fdbb2d;
         }
         
         .preview-container {
@@ -413,228 +488,46 @@ export default function Admin() {
           margin-bottom: 20px;
         }
         
-        .help-section a {
+        .help-section h4 {
           color: #fdbb2d;
+          margin-bottom: 10px;
+        }
+        
+        .help-section ul {
+          margin-left: 20px;
+        }
+        
+        .help-section li {
+          margin-bottom: 5px;
+        }
+        
+        .help-section a {
+          color: #4e54c8;
           text-decoration: underline;
+        }
+        
+        .help-section a:hover {
+          color: #fdbb2d;
+        }
+        
+        .loading {
+          text-align: center;
+          padding: 2rem;
+          font-size: 1.2rem;
+        }
+        
+        .empty-state {
+          text-align: center;
+          padding: 3rem;
+          color: #e1e1e1;
+        }
+        
+        .empty-state i {
+          font-size: 4rem;
+          color: #4e54c8;
+          margin-bottom: 1rem;
         }
         
         @media (max-width: 768px) {
           .projects-grid {
-            grid-template-columns: 1fr;
-          }
-          
-          .admin-panel-header {
-            flex-direction: column;
-            gap: 15px;
-          }
-          
-          .generate-options {
-            flex-direction: column;
-          }
-        }
-      `}</style>
-
-      <div className="admin-container">
-        <div className="admin-header">
-          <h1><i className="fas fa-cube"></i> 项目管理后台</h1>
-          <button className="btn btn-danger" onClick={handleLogout}>
-            <i className="fas fa-sign-out-alt"></i> 退出登录
-          </button>
-        </div>
-
-        <div className="admin-content">
-          <div className="help-section">
-            <h4>使用说明：</h4>
-            <p>请使用外部URL来添加图片和视频：</p>
-            <ul>
-              <li>图片上传推荐：<a href="https://imgbb.com/" target="_blank" rel="noopener noreferrer">ImgBB</a></li>
-              <li>视频上传推荐：<a href="https://streamable.com/" target="_blank" rel="noopener noreferrer">Streamable</a></li>
-              <li>上传后获取直接链接URL填入下方</li>
-            </ul>
-          </div>
-
-          <div className="admin-panel-header">
-            <h2>项目管理</h2>
-            <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
-              <i className="fas fa-plus"></i> 创建新项目
-            </button>
-          </div>
-          
-          {isLoading ? (
-            <p>加载中...</p>
-          ) : (
-            <div className="projects-grid">
-              {projects.length === 0 ? (
-                <p>暂无项目，请创建新项目</p>
-              ) : (
-                projects.map(project => (
-                  <div key={project._id} className="project-card">
-                    <h3>{project.name}</h3>
-                    <div className="project-image">
-                      {project.originalImage ? (
-                        <img src={project.originalImage} alt={project.name} />
-                      ) : (
-                        <i className="fas fa-image"></i>
-                      )}
-                    </div>
-                    <p>创建时间: {new Date(project.createdAt).toLocaleDateString()}</p>
-                    <p>状态: {project.status || '已发布'}</p>
-                    <p>标记图像: {project.markerImage ? '已设置' : '未设置'}</p>
-                    <div className="project-actions">
-                      <button className="btn btn-secondary" onClick={() => openEditModal(project)}>
-                        <i className="fas fa-edit"></i> 编辑
-                      </button>
-                      <button className="btn btn-danger" onClick={() => handleDelete(project._id)}>
-                        <i className="fas fa-trash"></i> 删除
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {showCreateModal && (
-            <div className="modal">
-              <div className="modal-content">
-                <div className="modal-header">
-                  <h2>创建新项目</h2>
-                  <span className="close-modal" onClick={() => setShowCreateModal(false)}>&times;</span>
-                </div>
-                <form onSubmit={handleCreate}>
-                  <div className="form-group">
-                    <label htmlFor="projectName">项目名称</label>
-                    <input
-                      type="text"
-                      id="projectName"
-                      placeholder="输入项目名称"
-                      value={formData.name}
-                      onChange={(e) => setFormData({...formData, name: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="originalImage">原始图片URL</label>
-                    <input
-                      type="url"
-                      id="originalImage"
-                      placeholder="输入原始图片URL"
-                      value={formData.originalImage}
-                      onChange={(e) => setFormData({...formData, originalImage: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="markerImage">标记图片URL (用于AR识别)</label>
-                    <input
-                      type="url"
-                      id="markerImage"
-                      placeholder="输入标记图片URL"
-                      value={formData.markerImage}
-                      onChange={(e) => setFormData({...formData, markerImage: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="videoURL">视频URL</label>
-                    <input
-                      type="url"
-                      id="videoURL"
-                      placeholder="输入视频URL"
-                      value={formData.videoURL}
-                      onChange={(e) => setFormData({...formData, videoURL: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="generate-options">
-                    <button 
-                      type="submit" 
-                      className="btn btn-primary" 
-                      style={{width: '100%'}}
-                      disabled={isLoading}
-                    >
-                      <i className="fas fa-save"></i> 
-                      {isLoading ? '创建中...' : '保存项目'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {showEditModal && (
-            <div className="modal">
-              <div className="modal-content">
-                <div className="modal-header">
-                  <h2>编辑项目</h2>
-                  <span className="close-modal" onClick={() => setShowEditModal(false)}>&times;</span>
-                </div>
-                <form onSubmit={handleUpdate}>
-                  <input type="hidden" value={editFormData.id} />
-                  <div className="form-group">
-                    <label htmlFor="editProjectName">项目名称</label>
-                    <input
-                      type="text"
-                      id="editProjectName"
-                      placeholder="输入项目名称"
-                      value={editFormData.name}
-                      onChange={(e) => setEditFormData({...editFormData, name: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="editOriginalImage">原始图片URL</label>
-                    <input
-                      type="url"
-                      id="editOriginalImage"
-                      placeholder="输入原始图片URL"
-                      value={editFormData.originalImage}
-                      onChange={(e) => setEditFormData({...editFormData, originalImage: e.target.value})}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="editMarkerImage">标记图片URL</label>
-                    <input
-                      type="url"
-                      id="editMarkerImage"
-                      placeholder="输入标记图片URL"
-                      value={editFormData.markerImage}
-                      onChange={(e) => setEditFormData({...editFormData, markerImage: e.target.value})}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="editVideoURL">视频URL</label>
-                    <input
-                      type="url"
-                      id="editVideoURL"
-                      placeholder="输入视频URL"
-                      value={editFormData.videoURL}
-                      onChange={(e) => setEditFormData({...editFormData, videoURL: e.target.value})}
-                    />
-                  </div>
-                  <div className="generate-options">
-                    <button 
-                      type="button" 
-                      className="btn btn-danger" 
-                      onClick={() => handleDelete(editFormData.id)}
-                    >
-                      <i className="fas fa-trash"></i> 删除项目
-                    </button>
-                    <button 
-                      type="submit" 
-                      className="btn btn-primary"
-                      disabled={isLoading}
-                    >
-                      <i className="fas fa-save"></i> 
-                      {isLoading ? '更新中...' : '更新项目'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+            grid-template
