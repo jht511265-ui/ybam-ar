@@ -19,8 +19,6 @@ export default function Home() {
   const [projects, setProjects] = useState([]);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
-  const detectionIntervalRef = useRef(null);
-  const canvasRef = useRef(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -40,9 +38,6 @@ export default function Home() {
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
-      }
-      if (detectionIntervalRef.current) {
-        clearInterval(detectionIntervalRef.current);
       }
     };
   }, []);
@@ -92,8 +87,8 @@ export default function Home() {
       setCameraStatus('摄像头已开启，请扫描图像');
       setShowPermissionHelp(false);
       
-      // 开始图像识别
-      startImageRecognition();
+      // 开始简单的图像检测（模拟AR效果）
+      startSimpleDetection();
       
     } catch (error) {
       console.error('摄像头访问错误:', error);
@@ -110,29 +105,17 @@ export default function Home() {
     }
   };
 
-  const startImageRecognition = () => {
-    if (!canvasRef.current) {
-      canvasRef.current = document.createElement('canvas');
-      canvasRef.current.width = 640;
-      canvasRef.current.height = 480;
-    }
-
-    const detectMarker = () => {
-      if (!videoRef.current || videoRef.current.readyState !== 4) {
-        requestAnimationFrame(detectMarker);
-        return;
-      }
-
-      const ctx = canvasRef.current.getContext('2d');
-      ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
-
-      // 简化版的图像识别 - 实际应用中应该使用专业的AR库
-      const imageData = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
-      const detectedProject = detectARMarker(imageData, projects);
-
-      if (detectedProject) {
+  const startSimpleDetection = () => {
+    // 简化的检测逻辑 - 使用定时器模拟AR检测
+    const detectionInterval = setInterval(() => {
+      if (!videoRef.current) return;
+      
+      // 模拟检测逻辑 - 在实际应用中应该使用专业的AR库
+      const isDetected = Math.random() > 0.8; // 20%的检测概率
+      
+      if (isDetected && projects.length > 0) {
         setDetected(true);
-        setCurrentProject(detectedProject);
+        setCurrentProject(projects[0]);
         
         // 更新视频位置和角度
         updateVideoPosition();
@@ -140,49 +123,16 @@ export default function Home() {
         setDetected(false);
         setCurrentProject(null);
       }
+    }, 2000);
 
-      requestAnimationFrame(detectMarker);
-    };
-
-    detectMarker();
-  };
-
-  const detectARMarker = (imageData, projects) => {
-    // 简化版的AR标记检测
-    // 在实际应用中应该使用专业的AR库如JSARToolKit
-    const data = imageData.data;
-    
-    // 检查图像中的特定特征（简化版）
-    let maxMatch = 0;
-    let bestMatchProject = null;
-    
-    projects.forEach(project => {
-      if (project.markerImage) {
-        // 这里应该是真正的图像特征匹配算法
-        // 简化版：基于图像亮度和对比度的简单检测
-        const matchScore = calculateImageMatchScore(data, project);
-        
-        if (matchScore > maxMatch && matchScore > 0.8) {
-          maxMatch = matchScore;
-          bestMatchProject = project;
-        }
-      }
-    });
-    
-    return bestMatchProject;
-  };
-
-  const calculateImageMatchScore = (imageData, project) => {
-    // 简化版的图像匹配算法
-    // 在实际应用中应该使用专业的图像识别库
-    return Math.random() * 0.3 + 0.7; // 返回0.7-1.0之间的随机数
+    return () => clearInterval(detectionInterval);
   };
 
   const updateVideoPosition = () => {
     const videoElement = document.getElementById('ar-video');
     if (!videoElement) return;
 
-    // 模拟3D变换效果 - 实际应用中应该使用Three.js等3D库
+    // 模拟3D变换效果
     const rotationX = Math.sin(Date.now() / 1000) * 5;
     const rotationY = Math.cos(Date.now() / 1000) * 5;
     
