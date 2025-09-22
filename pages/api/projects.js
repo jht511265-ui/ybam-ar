@@ -41,15 +41,15 @@ export default async function handler(req, res) {
     else if (req.method === 'POST') {
       const { name, originalImage, videoURL, markerImage } = req.body;
       
-      if (!name || !originalImage || !videoURL || !markerImage) {
-        return res.status(400).json({ message: '请填写所有字段' });
+      if (!name || !originalImage || !videoURL) {
+        return res.status(400).json({ message: '请填写项目名称并上传所有必需文件' });
       }
       
       const project = {
         name,
         originalImage,
         videoURL,
-        markerImage,
+        markerImage: markerImage || originalImage, // 如果没有标记图像，使用原始图像
         status: '已发布',
         createdAt: new Date(),
         updatedAt: new Date(),
