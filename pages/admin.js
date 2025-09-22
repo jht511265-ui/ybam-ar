@@ -125,30 +125,6 @@ export default function Admin() {
     return await response.json();
   };
 
-  // 修复 FileUploadField 组件（移除重复定义）
-  const FileUploadField = ({ label, fieldName, accept, required = false }) => (
-    <div className="form-group">
-      <label>{label} {required && <span style={{color: 'red'}}>*</span>}</label>
-      <input
-        type="file"
-        name={fieldName}
-        accept={accept}
-        onChange={(e) => handleFileChange(e, fieldName)}
-        required={required}
-        disabled={uploading}
-      />
-      {previewUrls[fieldName] && (
-        <div className="file-preview">
-          {fieldName === 'arVideo' ? (
-            <video src={previewUrls[fieldName]} controls style={{ maxWidth: '200px', marginTop: '10px' }} />
-          ) : (
-            <img src={previewUrls[fieldName]} alt="预览" style={{ maxWidth: '200px', marginTop: '10px' }} />
-          )}
-        </div>
-      )}
-    </div>
-  );
-
   const handleCreate = async (e) => {
     e.preventDefault();
     
@@ -276,6 +252,56 @@ export default function Admin() {
     setPreviewUrls({ originalImage: '', arVideo: '', markerImage: '' });
     setMessage('');
   };
+
+  // 修复文件上传字段的样式
+  const FileUploadField = ({ label, fieldName, accept, required = false }) => (
+    <div className="form-group">
+      <label>{label} {required && <span style={{color: 'red'}}>*</span>}</label>
+      <div style={{
+        position: 'relative',
+        display: 'inline-block',
+        width: '100%'
+      }}>
+        <input
+          type="file"
+          name={fieldName}
+          accept={accept}
+          onChange={(e) => handleFileChange(e, fieldName)}
+          required={required}
+          disabled={uploading}
+          style={{
+            width: '100%',
+            padding: '12px',
+            border: '2px solid #4e54c8',
+            borderRadius: '10px',
+            backgroundColor: 'rgba(0, 0, 0, 0.3)',
+            color: 'white',
+            cursor: 'pointer',
+            opacity: uploading ? 0.6 : 1
+          }}
+        />
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          right: '15px',
+          transform: 'translateY(-50%)',
+          color: '#fdbb2d',
+          pointerEvents: 'none'
+        }}>
+          <i className="fas fa-cloud-upload-alt"></i> 选择文件
+        </div>
+      </div>
+      {previewUrls[fieldName] && (
+        <div className="file-preview">
+          {fieldName === 'arVideo' ? (
+            <video src={previewUrls[fieldName]} controls style={{ maxWidth: '200px', marginTop: '10px' }} />
+          ) : (
+            <img src={previewUrls[fieldName]} alt="预览" style={{ maxWidth: '200px', marginTop: '10px' }} />
+          )}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="container">
@@ -478,28 +504,39 @@ export default function Admin() {
           margin-bottom: 8px;
           color: #fdbb2d;
           font-weight: 600;
+          font-size: 14px;
         }
         
-        .form-group input {
+        .form-group input[type="text"] {
           width: 100%;
           padding: 12px;
           border-radius: 10px;
           border: 2px solid #4e54c8;
           background-color: rgba(0, 0, 0, 0.3);
           color: white;
+          font-size: 14px;
         }
         
         .form-group input[type="file"] {
-          padding: 8px;
+          width: 100%;
+          padding: 12px;
+          border: 2px solid #4e54c8;
+          border-radius: 10px;
+          background-color: rgba(0, 0, 0, 0.3);
+          color: white;
+          cursor: pointer;
+          font-size: 14px;
         }
         
         .file-preview {
           margin-top: 10px;
+          text-align: center;
         }
         
         .file-preview img,
         .file-preview video {
           max-width: 100%;
+          max-height: 200px;
           border-radius: 5px;
           border: 2px solid #4e54c8;
         }
@@ -510,6 +547,7 @@ export default function Admin() {
           border-radius: 5px;
           margin: 10px 0;
           text-align: center;
+          color: #fdbb2d;
         }
         
         .loading {
@@ -519,6 +557,21 @@ export default function Admin() {
         
         .required {
           color: #ff6b6b;
+        }
+        
+        /* 修复文件输入框的显示问题 */
+        input[type="file"]::file-selector-button {
+          background: #4e54c8;
+          color: white;
+          border: none;
+          padding: 8px 16px;
+          border-radius: 5px;
+          cursor: pointer;
+          margin-right: 10px;
+        }
+        
+        input[type="file"]::file-selector-button:hover {
+          background: #3f43a1;
         }
         
         @media (max-width: 768px) {
@@ -532,6 +585,10 @@ export default function Admin() {
           
           .action-buttons {
             flex-direction: column;
+          }
+          
+          .form-group input[type="file"] {
+            padding: 10px;
           }
         }
       `}</style>
@@ -666,7 +723,7 @@ export default function Admin() {
                 <button 
                   type="submit" 
                   className="btn btn-success" 
-                  style={{width: '100%'}}
+                  style={{width: '100%', marginTop: '20px'}}
                   disabled={isLoading || uploading}
                 >
                   <i className="fas fa-save"></i> 
