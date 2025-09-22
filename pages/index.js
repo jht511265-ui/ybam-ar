@@ -54,7 +54,7 @@ export default function Home() {
     }
   };
 
-  const startCamera = async () => {
+const startCamera = async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setCameraStatus('您的浏览器不支持摄像头功能');
@@ -73,7 +73,7 @@ export default function Home() {
       
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
-          facingMode: 'environment',
+          facingMode: 'environment', // 使用后置摄像头
           width: { ideal: 1280 },
           height: { ideal: 720 }
         } 
@@ -82,6 +82,7 @@ export default function Home() {
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // 移除 transform: scaleX(-1) 修复后置摄像头方向
       }
       setIsCameraOpen(true);
       setCameraStatus('摄像头已开启，请扫描图像');
