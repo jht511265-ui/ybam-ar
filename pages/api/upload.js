@@ -1,6 +1,13 @@
-import { IncomingForm } from 'formidable';
-import fs from 'fs';
-import { v2 as cloudinary } from 'cloudinary';
+import formidable from "formidable";
+import { v2 as cloudinary } from "cloudinary";
+import fs from "fs";
+
+// 关闭 Next.js 默认 bodyParser，启用 formidable
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
 
 // 配置 Cloudinary
 cloudinary.config({
@@ -9,72 +16,52 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: '方法不允许' });
-  }
-
-  try {
-    // 解析表单数据
-    const data = await new Promise((resolve, reject) => {
-      const form = new IncomingForm();
-      form.parse(req, (err, fields, files) => {
-        if (err) reject(err);
-        resolve({ fields, files });
+  if (req.method === "POST") {
+    try {
+      const form = formidable({
+        multiples: false, // 一次一个文件
+        uploadDir: "/tmp", // 临时目录
+        keepExtensions: true,
       });
-    });
 
-    const { files } = data;
-    const uploadResults = {};
-
-    // 上传原始图像
-    if (files.originalImage) {
-      const originalImageResult = await cloudinary.uploader.upload(
-        files.originalImage.filepath,
-        { folder: 'ar-projects/original-images' }
-      );
-      uploadResults.originalImage = originalImageResult.secure_url;
-    }
-
-    // 上传 AR 视频
-    if (files.arVideo) {
-      const arVideoResult = await cloudinary.uploader.upload(
-        files.arVideo.filepath,
-        { 
-          folder: 'ar-projects/ar-videos',
-          resource_type: 'video'
+      form.parse(req, async (err, fields, files) => {
+        if (err) {
+          console.error("上传错误:", err);
+          return res.status(500).json({ error: "文件上传失败" });
         }
-      );
-      uploadResults.videoURL = arVideoResult.secure_url;
+
+        const file = files.file;
+        if (!file) {
+          return res.status(400).json({ error: "未检测到上传的文件" });
+        }
+
+        try {
+          // 上传到 Cloudinary
+          const result = await cloudinary.uploader.upload(file.filepath, {
+            resource_type: "auto", // 自动检测文件类型（图片/视频）
+            folder: "ybam-ar", // Cloudinary 文件夹
+          });
+
+          // 删除临时文件
+          fs.unlinkSync(file.filepath);
+
+          return res.status(200).json({
+            success: true,
+            url: result.secure_url,
+            public_id: result.public_id,
+          });
+        } catch (cloudErr) {
+          console.error("Cloudinary 上传失败:", cloudErr);
+          return res.status(500).json({ error: "上传到 Cloudinary 失败" });
+        }
+      });
+    } catch (error) {
+      console.error("处理上传失败:", error);
+      return res.status(500).json({ error: "服务器错误" });
     }
-
-    // 上传标记图像（可选）
-    if (files.markerImage) {
-      const markerImageResult = await cloudinary.uploader.upload(
-        files.markerImage.filepath,
-        { folder: 'ar-projects/marker-images' }
-      );
-      uploadResults.markerImage = markerImageResult.secure_url;
-    }
-
-    res.status(200).json({
-      success: true,
-      message: '文件上传成功',
-      data: uploadResults
-    });
-
-  } catch (error) {
-    console.error('文件上传错误:', error);
-    res.status(500).json({
-      success: false,
-      error: '文件上传失败',
-      message: error.message
-    });
+  } else {
+    res.setHeader("Allow", ["POST"]);
+    res.status(405).json({ error: "Method not allowed" });
   }
 }
