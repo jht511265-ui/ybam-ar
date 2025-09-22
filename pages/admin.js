@@ -93,28 +93,61 @@ export default function Admin() {
     });
   };
 
- const FileUploadField = ({ label, fieldName, accept, required = false }) => (
-  <div className="form-group">
-    <label>{label} {required && <span style={{color: 'red'}}>*</span>}</label>
-    <input
-      type="file"
-      name={fieldName} // 添加 name 属性
-      accept={accept}
-      onChange={(e) => handleFileChange(e, fieldName)}
-      required={required}
-      disabled={uploading}
-    />
-    {previewUrls[fieldName] && (
-      <div className="file-preview">
-        {fieldName === 'arVideo' ? (
-          <video src={previewUrls[fieldName]} controls style={{ maxWidth: '200px', marginTop: '10px' }} />
-        ) : (
-          <img src={previewUrls[fieldName]} alt="预览" style={{ maxWidth: '200px', marginTop: '10px' }} />
-        )}
-      </div>
-    )}
-  </div>
-);
+  // 添加缺失的 uploadFilesToCloudinary 函数
+  const uploadFilesToCloudinary = async (files) => {
+    const filesBase64 = {};
+
+    // 将文件转换为 base64
+    if (files.originalImage) {
+      filesBase64.originalImage = await fileToBase64(files.originalImage);
+    }
+    if (files.arVideo) {
+      filesBase64.arVideo = await fileToBase64(files.arVideo);
+    }
+    if (files.markerImage) {
+      filesBase64.markerImage = await fileToBase64(files.markerImage);
+    }
+
+    // 调用新的 base64 上传接口
+    const response = await fetch('/api/upload-base64', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ files: filesBase64 }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || '文件上传失败');
+    }
+
+    return await response.json();
+  };
+
+  // 修复 FileUploadField 组件（移除重复定义）
+  const FileUploadField = ({ label, fieldName, accept, required = false }) => (
+    <div className="form-group">
+      <label>{label} {required && <span style={{color: 'red'}}>*</span>}</label>
+      <input
+        type="file"
+        name={fieldName}
+        accept={accept}
+        onChange={(e) => handleFileChange(e, fieldName)}
+        required={required}
+        disabled={uploading}
+      />
+      {previewUrls[fieldName] && (
+        <div className="file-preview">
+          {fieldName === 'arVideo' ? (
+            <video src={previewUrls[fieldName]} controls style={{ maxWidth: '200px', marginTop: '10px' }} />
+          ) : (
+            <img src={previewUrls[fieldName]} alt="预览" style={{ maxWidth: '200px', marginTop: '10px' }} />
+          )}
+        </div>
+      )}
+    </div>
+  );
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -243,28 +276,6 @@ export default function Admin() {
     setPreviewUrls({ originalImage: '', arVideo: '', markerImage: '' });
     setMessage('');
   };
-
-  const FileUploadField = ({ label, fieldName, accept, required = false }) => (
-    <div className="form-group">
-      <label>{label} {required && <span style={{color: 'red'}}>*</span>}</label>
-      <input
-        type="file"
-        accept={accept}
-        onChange={(e) => handleFileChange(e, fieldName)}
-        required={required}
-        disabled={uploading}
-      />
-      {previewUrls[fieldName] && (
-        <div className="file-preview">
-          {fieldName === 'arVideo' ? (
-            <video src={previewUrls[fieldName]} controls style={{ maxWidth: '200px', marginTop: '10px' }} />
-          ) : (
-            <img src={previewUrls[fieldName]} alt="预览" style={{ maxWidth: '200px', marginTop: '10px' }} />
-          )}
-        </div>
-      )}
-    </div>
-  );
 
   return (
     <div className="container">
