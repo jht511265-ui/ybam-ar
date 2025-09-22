@@ -5,19 +5,11 @@ import Head from 'next/head';
 export default function Admin() {
   const [projects, setProjects] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     originalImage: null,
     arVideo: null,
     markerImage: null
-  });
-  const [editFormData, setEditFormData] = useState({
-    id: '',
-    name: '',
-    originalImage: '',
-    videoURL: '',
-    markerImage: ''
   });
   const [isLoading, setIsLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -93,19 +85,26 @@ export default function Admin() {
   };
 
   const uploadFiles = async (files) => {
-    const formData = new FormData();
+    const uploadFormData = new FormData();
     
-    if (files.originalImage) formData.append('originalImage', files.originalImage);
-    if (files.arVideo) formData.append('arVideo', files.arVideo);
-    if (files.markerImage) formData.append('markerImage', files.markerImage);
+    if (files.originalImage) {
+      uploadFormData.append('originalImage', files.originalImage);
+    }
+    if (files.arVideo) {
+      uploadFormData.append('arVideo', files.arVideo);
+    }
+    if (files.markerImage) {
+      uploadFormData.append('markerImage', files.markerImage);
+    }
 
     const response = await fetch('/api/upload', {
       method: 'POST',
-      body: formData,
+      body: uploadFormData,
     });
 
     if (!response.ok) {
-      throw new Error('文件上传失败');
+      const errorData = await response.json();
+      throw new Error(errorData.message || '文件上传失败');
     }
 
     return await response.json();
@@ -114,9 +113,24 @@ export default function Admin() {
   const handleCreate = async (e) => {
     e.preventDefault();
     
-    if (!authToken) return;
-    if (!formData.name || !formData.originalImage || !formData.arVideo) {
-      setMessage('请填写项目名称并上传所有必需文件');
+    if (!authToken) {
+      setMessage('请先登录');
+      return;
+    }
+
+    // 验证必填字段
+    if (!formData.name) {
+      setMessage('请填写项目名称');
+      return;
+    }
+
+    if (!formData.originalImage) {
+      setMessage('请上传原始图像');
+      return;
+    }
+
+    if (!formData.arVideo) {
+      setMessage('请上传AR视频');
       return;
     }
 
@@ -125,12 +139,16 @@ export default function Admin() {
     setMessage('');
 
     try {
+      console.log('开始上传文件...');
+      
       // 首先上传文件
       const uploadResult = await uploadFiles({
         originalImage: formData.originalImage,
         arVideo: formData.arVideo,
         markerImage: formData.markerImage
       });
+
+      console.log('文件上传结果:', uploadResult);
 
       if (!uploadResult.success) {
         throw new Error(uploadResult.message);
@@ -144,6 +162,8 @@ export default function Admin() {
         markerImage: uploadResult.data.markerImage || uploadResult.data.originalImage
       };
 
+      console.log('创建项目数据:', projectData);
+
       const response = await fetch('/api/projects', {
         method: 'POST',
         headers: {
@@ -153,6 +173,9 @@ export default function Admin() {
         body: JSON.stringify(projectData)
       });
 
+      const responseData = await response.json();
+      console.log('创建项目响应:', responseData);
+
       if (response.ok) {
         setShowCreateModal(false);
         setFormData({ name: '', originalImage: null, arVideo: null, markerImage: null });
@@ -161,8 +184,7 @@ export default function Admin() {
         setMessage('项目创建成功！');
         setTimeout(() => setMessage(''), 3000);
       } else {
-        const error = await response.json();
-        setMessage('创建失败: ' + error.message);
+        throw new Error(responseData.message || '创建项目失败');
       }
     } catch (error) {
       console.error('创建项目失败:', error);
@@ -170,46 +192,6 @@ export default function Admin() {
     } finally {
       setIsLoading(false);
       setUploading(false);
-    }
-  };
-
-  const handleUpdate = async (e) => {
-    e.preventDefault();
-    
-    if (!authToken) return;
-    if (!editFormData.name) {
-      setMessage('项目名称不能为空');
-      return;
-    }
-
-    setIsLoading(true);
-    setMessage('');
-
-    try {
-      const response = await fetch('/api/projects', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
-        },
-        body: JSON.stringify(editFormData)
-      });
-
-      if (response.ok) {
-        setShowEditModal(false);
-        setEditFormData({ id: '', name: '', originalImage: '', videoURL: '', markerImage: '' });
-        fetchProjects(authToken);
-        setMessage('项目更新成功！');
-        setTimeout(() => setMessage(''), 3000);
-      } else {
-        const error = await response.json();
-        setMessage('更新失败: ' + error.message);
-      }
-    } catch (error) {
-      console.error('更新项目失败:', error);
-      setMessage('更新失败，请重试');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -245,35 +227,22 @@ export default function Admin() {
     }
   };
 
-  const openEditModal = (project) => {
-    setEditFormData({
-      id: project._id,
-      name: project.name,
-      originalImage: project.originalImage || '',
-      videoURL: project.videoURL || '',
-      markerImage: project.markerImage || ''
-    });
-    setShowEditModal(true);
-    setMessage('');
-  };
-
-  const closeModals = () => {
+  const closeModal = () => {
     setShowCreateModal(false);
-    setShowEditModal(false);
     setFormData({ name: '', originalImage: null, arVideo: null, markerImage: null });
     setPreviewUrls({ originalImage: '', arVideo: '', markerImage: '' });
-    setEditFormData({ id: '', name: '', originalImage: '', videoURL: '', markerImage: '' });
     setMessage('');
   };
 
   const FileUploadField = ({ label, fieldName, accept, required = false }) => (
     <div className="form-group">
-      <label>{label} {required && '*'}</label>
+      <label>{label} {required && <span style={{color: 'red'}}>*</span>}</label>
       <input
         type="file"
         accept={accept}
         onChange={(e) => handleFileChange(e, fieldName)}
         required={required}
+        disabled={uploading}
       />
       {previewUrls[fieldName] && (
         <div className="file-preview">
@@ -543,15 +512,6 @@ export default function Admin() {
           .action-buttons {
             flex-direction: column;
           }
-          
-          .projects-table {
-            font-size: 0.8rem;
-          }
-          
-          .projects-table th,
-          .projects-table td {
-            padding: 8px;
-          }
         }
       `}</style>
 
@@ -621,12 +581,6 @@ export default function Admin() {
                     <td>
                       <div className="action-buttons">
                         <button 
-                          className="btn btn-secondary"
-                          onClick={() => openEditModal(project)}
-                        >
-                          <i className="fas fa-edit"></i> 编辑
-                        </button>
-                        <button 
                           className="btn btn-danger"
                           onClick={() => handleDelete(project._id)}
                         >
@@ -647,29 +601,30 @@ export default function Admin() {
             <div className="modal-content">
               <div className="modal-header">
                 <h2>创建新项目</h2>
-                <span className="close-modal" onClick={closeModals}>&times;</span>
+                <span className="close-modal" onClick={closeModal}>&times;</span>
               </div>
               <form onSubmit={handleCreate}>
                 <div className="form-group">
-                  <label>项目名称 <span className="required">*</span></label>
+                  <label>项目名称 <span style={{color: 'red'}}>*</span></label>
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
                     placeholder="输入项目名称"
                     required
+                    disabled={uploading}
                   />
                 </div>
 
                 <FileUploadField 
-                  label="原始图像 *" 
+                  label="原始图像" 
                   fieldName="originalImage" 
                   accept="image/*"
                   required={true}
                 />
 
                 <FileUploadField 
-                  label="AR视频 *" 
+                  label="AR视频" 
                   fieldName="arVideo" 
                   accept="video/*"
                   required={true}
@@ -695,48 +650,6 @@ export default function Admin() {
                 >
                   <i className="fas fa-save"></i> 
                   {uploading ? '上传中...' : isLoading ? '创建中...' : '创建项目'}
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* 编辑项目模态框 */}
-        {showEditModal && (
-          <div className="modal">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h2>编辑项目</h2>
-                <span className="close-modal" onClick={closeModals}>&times;</span>
-              </div>
-              <form onSubmit={handleUpdate}>
-                <div className="form-group">
-                  <label>项目名称 <span className="required">*</span></label>
-                  <input
-                    type="text"
-                    value={editFormData.name}
-                    onChange={(e) => setEditFormData({...editFormData, name: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>原始图像URL</label>
-                  <input
-                    type="url"
-                    value={editFormData.originalImage}
-                    onChange={(e) => setEditFormData({...editFormData, originalImage: e.target.value})}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>AR视频URL</label>
-                  <input
-                    type="url"
-                    value={editFormData.videoURL}
-                    onChange={(e) => setEditFormData({...editFormData, videoURL: e.target.value})}
-                  />
-                </div>
-                <button type="submit" className="btn btn-success" style={{width: '100%'}}>
-                  <i className="fas fa-save"></i> 更新项目
                 </button>
               </form>
             </div>
