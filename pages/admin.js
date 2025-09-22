@@ -8,9 +8,9 @@ export default function Admin() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
-    originalImage: '',
-    videoURL: '',
-    markerImage: ''
+    originalImage: null,
+    arVideo: null,
+    markerImage: null
   });
   const [editFormData, setEditFormData] = useState({
     id: '',
@@ -19,9 +19,15 @@ export default function Admin() {
     videoURL: '',
     markerImage: ''
   });
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [authToken, setAuthToken] = useState(null);
   const [message, setMessage] = useState('');
+  const [previewUrls, setPreviewUrls] = useState({
+    originalImage: '',
+    arVideo: '',
+    markerImage: ''
+  });
   const router = useRouter();
 
   useEffect(() => {
@@ -69,31 +75,88 @@ export default function Admin() {
     router.push('/');
   };
 
+  const handleFileChange = (e, fieldName) => {
+    const file = e.target.files[0];
+    if (file) {
+      setFormData(prev => ({
+        ...prev,
+        [fieldName]: file
+      }));
+
+      // 创建预览URL
+      const previewUrl = URL.createObjectURL(file);
+      setPreviewUrls(prev => ({
+        ...prev,
+        [fieldName]: previewUrl
+      }));
+    }
+  };
+
+  const uploadFiles = async (files) => {
+    const formData = new FormData();
+    
+    if (files.originalImage) formData.append('originalImage', files.originalImage);
+    if (files.arVideo) formData.append('arVideo', files.arVideo);
+    if (files.markerImage) formData.append('markerImage', files.markerImage);
+
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error('文件上传失败');
+    }
+
+    return await response.json();
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
     
     if (!authToken) return;
-    if (!formData.name || !formData.originalImage || !formData.videoURL || !formData.markerImage) {
-      setMessage('请填写所有字段');
+    if (!formData.name || !formData.originalImage || !formData.arVideo) {
+      setMessage('请填写项目名称并上传所有必需文件');
       return;
     }
 
     setIsLoading(true);
+    setUploading(true);
     setMessage('');
 
     try {
+      // 首先上传文件
+      const uploadResult = await uploadFiles({
+        originalImage: formData.originalImage,
+        arVideo: formData.arVideo,
+        markerImage: formData.markerImage
+      });
+
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.message);
+      }
+
+      // 然后创建项目
+      const projectData = {
+        name: formData.name,
+        originalImage: uploadResult.data.originalImage,
+        videoURL: uploadResult.data.videoURL,
+        markerImage: uploadResult.data.markerImage || uploadResult.data.originalImage
+      };
+
       const response = await fetch('/api/projects', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(projectData)
       });
 
       if (response.ok) {
         setShowCreateModal(false);
-        setFormData({ name: '', originalImage: '', videoURL: '', markerImage: '' });
+        setFormData({ name: '', originalImage: null, arVideo: null, markerImage: null });
+        setPreviewUrls({ originalImage: '', arVideo: '', markerImage: '' });
         fetchProjects(authToken);
         setMessage('项目创建成功！');
         setTimeout(() => setMessage(''), 3000);
@@ -103,9 +166,10 @@ export default function Admin() {
       }
     } catch (error) {
       console.error('创建项目失败:', error);
-      setMessage('创建失败，请重试');
+      setMessage('创建失败: ' + error.message);
     } finally {
       setIsLoading(false);
+      setUploading(false);
     }
   };
 
@@ -196,10 +260,32 @@ export default function Admin() {
   const closeModals = () => {
     setShowCreateModal(false);
     setShowEditModal(false);
-    setFormData({ name: '', originalImage: '', videoURL: '', markerImage: '' });
+    setFormData({ name: '', originalImage: null, arVideo: null, markerImage: null });
+    setPreviewUrls({ originalImage: '', arVideo: '', markerImage: '' });
     setEditFormData({ id: '', name: '', originalImage: '', videoURL: '', markerImage: '' });
     setMessage('');
   };
+
+  const FileUploadField = ({ label, fieldName, accept, required = false }) => (
+    <div className="form-group">
+      <label>{label} {required && '*'}</label>
+      <input
+        type="file"
+        accept={accept}
+        onChange={(e) => handleFileChange(e, fieldName)}
+        required={required}
+      />
+      {previewUrls[fieldName] && (
+        <div className="file-preview">
+          {fieldName === 'arVideo' ? (
+            <video src={previewUrls[fieldName]} controls style={{ maxWidth: '200px', marginTop: '10px' }} />
+          ) : (
+            <img src={previewUrls[fieldName]} alt="预览" style={{ maxWidth: '200px', marginTop: '10px' }} />
+          )}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="container">
@@ -295,6 +381,12 @@ export default function Admin() {
           transform: translateY(-2px);
         }
         
+        .btn:disabled {
+          background-color: #6c757d;
+          cursor: not-allowed;
+          transform: none;
+        }
+        
         .admin-content {
           background-color: rgba(0, 0, 0, 0.7);
           border-radius: 20px;
@@ -366,10 +458,12 @@ export default function Admin() {
         .modal-content {
           background: linear-gradient(135deg, #1a2a6c, #3a3f7d);
           width: 90%;
-          max-width: 500px;
+          max-width: 600px;
           border-radius: 20px;
           padding: 2rem;
           box-shadow: 0 5px 25px rgba(0, 0, 0, 0.5);
+          max-height: 90vh;
+          overflow-y: auto;
         }
         
         .modal-header {
@@ -393,6 +487,7 @@ export default function Admin() {
           display: block;
           margin-bottom: 8px;
           color: #fdbb2d;
+          font-weight: 600;
         }
         
         .form-group input {
@@ -404,9 +499,36 @@ export default function Admin() {
           color: white;
         }
         
+        .form-group input[type="file"] {
+          padding: 8px;
+        }
+        
+        .file-preview {
+          margin-top: 10px;
+        }
+        
+        .file-preview img,
+        .file-preview video {
+          max-width: 100%;
+          border-radius: 5px;
+          border: 2px solid #4e54c8;
+        }
+        
+        .upload-status {
+          background-color: rgba(255, 255, 255, 0.1);
+          padding: 10px;
+          border-radius: 5px;
+          margin: 10px 0;
+          text-align: center;
+        }
+        
         .loading {
           text-align: center;
           padding: 2rem;
+        }
+        
+        .required {
+          color: #ff6b6b;
         }
         
         @media (max-width: 768px) {
@@ -469,7 +591,6 @@ export default function Admin() {
                   <th>项目名称</th>
                   <th>原始图像</th>
                   <th>AR视频</th>
-                  <th>标记图像</th>
                   <th>创建时间</th>
                   <th>操作</th>
                 </tr>
@@ -483,7 +604,7 @@ export default function Admin() {
                         <img 
                           src={project.originalImage} 
                           alt="原始图像" 
-                          style={{width: '50px', height: '50px', objectFit: 'cover', borderRadius: '5px'}}
+                          style={{width: '80px', height: '60px', objectFit: 'cover', borderRadius: '5px'}}
                         />
                       )}
                     </td>
@@ -491,17 +612,8 @@ export default function Admin() {
                       {project.videoURL && (
                         <video 
                           src={project.videoURL} 
-                          style={{width: '50px', height: '50px', objectFit: 'cover', borderRadius: '5px'}}
+                          style={{width: '80px', height: '60px', objectFit: 'cover', borderRadius: '5px'}}
                           muted
-                        />
-                      )}
-                    </td>
-                    <td>
-                      {project.markerImage && (
-                        <img 
-                          src={project.markerImage} 
-                          alt="标记图像" 
-                          style={{width: '50px', height: '50px', objectFit: 'cover', borderRadius: '5px'}}
                         />
                       )}
                     </td>
@@ -539,7 +651,7 @@ export default function Admin() {
               </div>
               <form onSubmit={handleCreate}>
                 <div className="form-group">
-                  <label>项目名称</label>
+                  <label>项目名称 <span className="required">*</span></label>
                   <input
                     type="text"
                     value={formData.name}
@@ -548,38 +660,41 @@ export default function Admin() {
                     required
                   />
                 </div>
-                <div className="form-group">
-                  <label>原始图像URL</label>
-                  <input
-                    type="url"
-                    value={formData.originalImage}
-                    onChange={(e) => setFormData({...formData, originalImage: e.target.value})}
-                    placeholder="输入原始图像URL"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>AR视频URL</label>
-                  <input
-                    type="url"
-                    value={formData.videoURL}
-                    onChange={(e) => setFormData({...formData, videoURL: e.target.value})}
-                    placeholder="输入AR视频URL"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>标记图像URL</label>
-                  <input
-                    type="url"
-                    value={formData.markerImage}
-                    onChange={(e) => setFormData({...formData, markerImage: e.target.value})}
-                    placeholder="输入标记图像URL"
-                    required
-                  />
-                </div>
-                <button type="submit" className="btn btn-success" style={{width: '100%'}}>
-                  <i className="fas fa-save"></i> 创建项目
+
+                <FileUploadField 
+                  label="原始图像 *" 
+                  fieldName="originalImage" 
+                  accept="image/*"
+                  required={true}
+                />
+
+                <FileUploadField 
+                  label="AR视频 *" 
+                  fieldName="arVideo" 
+                  accept="video/*"
+                  required={true}
+                />
+
+                <FileUploadField 
+                  label="标记图像 (可选，如不上传将使用原始图像)" 
+                  fieldName="markerImage" 
+                  accept="image/*"
+                />
+
+                {uploading && (
+                  <div className="upload-status">
+                    <i className="fas fa-spinner fa-spin"></i> 文件上传中，请稍候...
+                  </div>
+                )}
+
+                <button 
+                  type="submit" 
+                  className="btn btn-success" 
+                  style={{width: '100%'}}
+                  disabled={isLoading || uploading}
+                >
+                  <i className="fas fa-save"></i> 
+                  {uploading ? '上传中...' : isLoading ? '创建中...' : '创建项目'}
                 </button>
               </form>
             </div>
@@ -596,7 +711,7 @@ export default function Admin() {
               </div>
               <form onSubmit={handleUpdate}>
                 <div className="form-group">
-                  <label>项目名称</label>
+                  <label>项目名称 <span className="required">*</span></label>
                   <input
                     type="text"
                     value={editFormData.name}
@@ -618,14 +733,6 @@ export default function Admin() {
                     type="url"
                     value={editFormData.videoURL}
                     onChange={(e) => setEditFormData({...editFormData, videoURL: e.target.value})}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>标记图像URL</label>
-                  <input
-                    type="url"
-                    value={editFormData.markerImage}
-                    onChange={(e) => setEditFormData({...editFormData, markerImage: e.target.value})}
                   />
                 </div>
                 <button type="submit" className="btn btn-success" style={{width: '100%'}}>
