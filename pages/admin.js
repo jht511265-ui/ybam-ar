@@ -20,6 +20,11 @@ export default function Admin() {
     arVideo: '',
     markerImage: ''
   });
+  const [fileNames, setFileNames] = useState({
+    originalImage: '',
+    arVideo: '',
+    markerImage: ''
+  });
   const router = useRouter();
 
   useEffect(() => {
@@ -75,6 +80,11 @@ export default function Admin() {
         [fieldName]: file
       }));
 
+      setFileNames(prev => ({
+        ...prev,
+        [fieldName]: file.name
+      }));
+
       // 创建预览URL
       const previewUrl = URL.createObjectURL(file);
       setPreviewUrls(prev => ({
@@ -93,7 +103,6 @@ export default function Admin() {
     });
   };
 
-  // 添加缺失的 uploadFilesToCloudinary 函数
   const uploadFilesToCloudinary = async (files) => {
     const filesBase64 = {};
 
@@ -156,7 +165,6 @@ export default function Admin() {
     try {
       console.log('开始上传文件到 Cloudinary...');
       
-      // 首先上传文件到 Cloudinary
       const uploadResult = await uploadFilesToCloudinary({
         originalImage: formData.originalImage,
         arVideo: formData.arVideo,
@@ -169,7 +177,6 @@ export default function Admin() {
         throw new Error(uploadResult.error || '文件上传失败');
       }
 
-      // 然后创建项目记录
       const projectData = {
         name: formData.name,
         originalImage: uploadResult.data.originalImage,
@@ -181,8 +188,6 @@ export default function Admin() {
           markerImagePublicId: uploadResult.data.markerImagePublicId
         }
       };
-
-      console.log('创建项目数据:', projectData);
 
       const response = await fetch('/api/projects', {
         method: 'POST',
@@ -199,6 +204,7 @@ export default function Admin() {
         setShowCreateModal(false);
         setFormData({ name: '', originalImage: null, arVideo: null, markerImage: null });
         setPreviewUrls({ originalImage: '', arVideo: '', markerImage: '' });
+        setFileNames({ originalImage: '', arVideo: '', markerImage: '' });
         fetchProjects(authToken);
         setMessage('项目创建成功！文件已上传到 Cloudinary');
         setTimeout(() => setMessage(''), 5000);
@@ -250,46 +256,29 @@ export default function Admin() {
     setShowCreateModal(false);
     setFormData({ name: '', originalImage: null, arVideo: null, markerImage: null });
     setPreviewUrls({ originalImage: '', arVideo: '', markerImage: '' });
+    setFileNames({ originalImage: '', arVideo: '', markerImage: '' });
     setMessage('');
   };
 
-  // 修复文件上传字段的样式
+  // 简单的文件上传组件
   const FileUploadField = ({ label, fieldName, accept, required = false }) => (
     <div className="form-group">
       <label>{label} {required && <span style={{color: 'red'}}>*</span>}</label>
-      <div style={{
-        position: 'relative',
-        display: 'inline-block',
-        width: '100%'
-      }}>
+      <div className="file-input-wrapper">
         <input
           type="file"
+          id={fieldName}
           name={fieldName}
           accept={accept}
           onChange={(e) => handleFileChange(e, fieldName)}
           required={required}
           disabled={uploading}
-          style={{
-            width: '100%',
-            padding: '12px',
-            border: '2px solid #4e54c8',
-            borderRadius: '10px',
-            backgroundColor: 'rgba(0, 0, 0, 0.3)',
-            color: 'white',
-            cursor: 'pointer',
-            opacity: uploading ? 0.6 : 1
-          }}
+          className="file-input"
         />
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          right: '15px',
-          transform: 'translateY(-50%)',
-          color: '#fdbb2d',
-          pointerEvents: 'none'
-        }}>
-          <i className="fas fa-cloud-upload-alt"></i> 选择文件
-        </div>
+        <label htmlFor={fieldName} className="file-input-label">
+          <i className="fas fa-cloud-upload-alt"></i>
+          {fileNames[fieldName] ? fileNames[fieldName] : '选择文件'}
+        </label>
       </div>
       {previewUrls[fieldName] && (
         <div className="file-preview">
@@ -365,16 +354,6 @@ export default function Admin() {
         .btn-primary:hover {
           background-color: #3f43a1;
           transform: translateY(-2px);
-        }
-        
-        .btn-secondary {
-          background-color: transparent;
-          border: 2px solid #4e54c8;
-          color: #4e54c8;
-        }
-        
-        .btn-secondary:hover {
-          background-color: rgba(78, 84, 200, 0.1);
         }
         
         .btn-danger {
@@ -504,7 +483,6 @@ export default function Admin() {
           margin-bottom: 8px;
           color: #fdbb2d;
           font-weight: 600;
-          font-size: 14px;
         }
         
         .form-group input[type="text"] {
@@ -514,18 +492,41 @@ export default function Admin() {
           border: 2px solid #4e54c8;
           background-color: rgba(0, 0, 0, 0.3);
           color: white;
-          font-size: 14px;
         }
         
-        .form-group input[type="file"] {
+        /* 修复文件上传样式 */
+        .file-input-wrapper {
+          position: relative;
+          width: 100%;
+        }
+        
+        .file-input {
+          position: absolute;
+          left: -9999px;
+          opacity: 0;
+        }
+        
+        .file-input-label {
+          display: block;
           width: 100%;
           padding: 12px;
-          border: 2px solid #4e54c8;
+          border: 2px dashed #4e54c8;
           border-radius: 10px;
-          background-color: rgba(0, 0, 0, 0.3);
-          color: white;
+          background-color: rgba(0, 0, 0, 0.2);
+          color: #fdbb2d;
+          text-align: center;
           cursor: pointer;
-          font-size: 14px;
+          transition: all 0.3s ease;
+        }
+        
+        .file-input-label:hover {
+          background-color: rgba(78, 84, 200, 0.1);
+          border-color: #fdbb2d;
+        }
+        
+        .file-input:disabled + .file-input-label {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
         
         .file-preview {
@@ -555,25 +556,6 @@ export default function Admin() {
           padding: 2rem;
         }
         
-        .required {
-          color: #ff6b6b;
-        }
-        
-        /* 修复文件输入框的显示问题 */
-        input[type="file"]::file-selector-button {
-          background: #4e54c8;
-          color: white;
-          border: none;
-          padding: 8px 16px;
-          border-radius: 5px;
-          cursor: pointer;
-          margin-right: 10px;
-        }
-        
-        input[type="file"]::file-selector-button:hover {
-          background: #3f43a1;
-        }
-        
         @media (max-width: 768px) {
           .admin-container {
             padding: 10px;
@@ -585,10 +567,6 @@ export default function Admin() {
           
           .action-buttons {
             flex-direction: column;
-          }
-          
-          .form-group input[type="file"] {
-            padding: 10px;
           }
         }
       `}</style>
