@@ -18,6 +18,7 @@ export default function Home() {
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [projects, setProjects] = useState([]);
   const [scanning, setScanning] = useState(false);
+  const [cameraError, setCameraError] = useState('');
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const scanIntervalRef = useRef(null);
@@ -33,17 +34,11 @@ export default function Home() {
         setIsLoggedIn(true);
       }
       
-      // 加载项目数据
       fetchProjects();
     }
     
     return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-      if (scanIntervalRef.current) {
-        clearInterval(scanIntervalRef.current);
-      }
+      stopCamera();
     };
   }, []);
 
@@ -61,79 +56,125 @@ export default function Home() {
 
   const startCamera = async () => {
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setCameraStatus('您的浏览器不支持摄像头功能');
-        setShowPermissionHelp(true);
-        return;
-      }
-
-      const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost';
-      if (!isSecure) {
-        setCameraStatus('请在HTTPS环境或localhost中访问此页面');
-        setShowPermissionHelp(true);
-        return;
-      }
-
+      setCameraError('');
       setCameraStatus('正在请求摄像头权限...');
-      setScanning(true);
       
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        } 
-      });
+      // 停止已有的摄像头流
+      if (streamRef.current) {
+        stopCamera();
+      }
+
+      // 检查浏览器支持
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('您的浏览器不支持摄像头功能');
+      }
+
+      // 检查安全环境
+      const isSecure = window.location.protocol === 'https:' || 
+                       window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1';
       
+      if (!isSecure) {
+        throw new Error('请在HTTPS环境或本地环境中访问此页面');
+      }
+
+      // 尝试不同的摄像头配置
+      const constraints = {
+        video: {
+          facingMode: 'environment', // 优先使用后置摄像头
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 },
+          frameRate: { ideal: 30 }
+        },
+        audio: false
+      };
+
+      console.log('尝试获取摄像头权限...');
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      console.log('摄像头权限获取成功');
       streamRef.current = stream;
+      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        
+        // 等待视频元素准备就绪
+        await new Promise((resolve) => {
+          if (videoRef.current.readyState >= 3) {
+            resolve();
+          } else {
+            videoRef.current.onloadeddata = resolve;
+          }
+        });
       }
+      
       setIsCameraOpen(true);
+      setScanning(true);
       setCameraStatus('摄像头已开启，请扫描AR标记图像');
       setShowPermissionHelp(false);
       
-      // 开始AR扫描检测
+      // 开始AR检测
       startARDetection();
       
     } catch (error) {
       console.error('摄像头访问错误:', error);
-      setScanning(false);
-      
-      if (error.name === 'NotAllowedError') {
-        setCameraStatus('摄像头权限已被拒绝，请检查浏览器设置');
-      } else if (error.name === 'NotFoundError') {
-        setCameraStatus('未找到可用的摄像头设备');
-      } else if (error.name === 'NotReadableError') {
-        setCameraStatus('摄像头设备正被其他应用程序使用');
-      } else {
-        setCameraStatus('无法访问摄像头: ' + error.message);
-      }
-      setShowPermissionHelp(true);
+      handleCameraError(error);
     }
   };
 
+  const handleCameraError = (error) => {
+    setScanning(false);
+    setIsCameraOpen(false);
+    
+    let errorMessage = '无法访问摄像头: ';
+    
+    switch (error.name) {
+      case 'NotAllowedError':
+        errorMessage = '摄像头权限已被拒绝。请检查浏览器设置并允许摄像头访问，然后刷新页面重试。';
+        break;
+      case 'NotFoundError':
+        errorMessage = '未找到可用的摄像头设备。请检查您的设备是否有摄像头。';
+        break;
+      case 'NotReadableError':
+        errorMessage = '摄像头设备正被其他应用程序使用。请关闭其他使用摄像头的应用后重试。';
+        break;
+      case 'OverconstrainedError':
+      case 'ConstraintError':
+        errorMessage = '无法满足摄像头要求。尝试使用其他浏览器或设备。';
+        break;
+      default:
+        errorMessage += error.message;
+    }
+    
+    setCameraStatus(errorMessage);
+    setCameraError(errorMessage);
+    setShowPermissionHelp(true);
+  };
+
   const startARDetection = () => {
-    // 模拟AR检测逻辑
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+    }
+    
     let detectionCount = 0;
     
     scanIntervalRef.current = setInterval(() => {
-      if (!videoRef.current) return;
+      if (!videoRef.current || !streamRef.current) return;
       
-      // 模拟检测过程 - 在实际应用中这里应该使用AR.js或其他AR库
       detectionCount++;
       
-      // 每3秒尝试检测一次
-      if (detectionCount % 3 === 0 && projects.length > 0) {
+      // 每2秒尝试检测一次
+      if (detectionCount % 2 === 0 && projects.length > 0) {
         const randomProject = projects[Math.floor(Math.random() * projects.length)];
-        const isDetected = Math.random() > 0.7; // 30%的检测概率
+        const isDetected = Math.random() > 0.8; // 20%的检测概率
         
         if (isDetected) {
           setDetected(true);
           setCurrentProject(randomProject);
-          setCameraStatus(`已检测到项目: ${randomProject.name}`);
+          setCameraStatus(`✅ 已检测到项目: ${randomProject.name}`);
+          setScanning(false);
           
-          // 停止扫描
           clearInterval(scanIntervalRef.current);
         }
       }
@@ -141,13 +182,20 @@ export default function Home() {
   };
 
   const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = null;
+    }
+    
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+      });
+      streamRef.current = null;
+    }
+    
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     
     setIsCameraOpen(false);
@@ -202,11 +250,33 @@ export default function Home() {
   };
 
   const handleLogout = () => {
+    stopCamera();
     if (typeof window !== 'undefined') {
       localStorage.removeItem('authToken');
       localStorage.removeItem('user');
     }
     setIsLoggedIn(false);
+  };
+
+  // 添加调试信息组件
+  const DebugInfo = () => {
+    if (!isCameraOpen) return null;
+    
+    return (
+      <div style={{
+        position: 'absolute',
+        bottom: '10px',
+        left: '10px',
+        background: 'rgba(0,0,0,0.7)',
+        color: 'white',
+        padding: '5px 10px',
+        borderRadius: '5px',
+        fontSize: '12px',
+        zIndex: 10
+      }}>
+        摄像头状态: {videoRef.current?.readyState === 4 ? '就绪' : '加载中'}
+      </div>
+    );
   };
 
   if (!isClient) {
@@ -241,29 +311,21 @@ export default function Home() {
           background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
           min-height: 100vh;
           color: #fff;
-          display: flex;
-          flex-direction: column;
         }
         
         .container {
           max-width: 1200px;
           margin: 0 auto;
           padding: 0 20px;
-          flex: 1;
         }
         
-        /* Header Styles */
         header {
           background: rgba(0, 0, 0, 0.8);
-          backdrop-filter: blur(10px);
           padding: 1rem 2rem;
           display: flex;
           justify-content: space-between;
           align-items: center;
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-          position: sticky;
-          top: 0;
-          z-index: 100;
         }
         
         .logo {
@@ -276,14 +338,12 @@ export default function Home() {
         
         .logo i {
           color: #fdbb2d;
-          font-size: 2rem;
         }
         
         .logo-text {
           background: linear-gradient(to right, #fdbb2d, #b21f1f);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
-          font-weight: 700;
         }
         
         .auth-buttons {
@@ -292,7 +352,7 @@ export default function Home() {
         }
         
         .btn {
-          padding: 12px 24px;
+          padding: 10px 20px;
           border: none;
           border-radius: 25px;
           cursor: pointer;
@@ -301,18 +361,16 @@ export default function Home() {
           display: flex;
           align-items: center;
           gap: 8px;
-          font-size: 0.9rem;
         }
         
         .btn-primary {
-          background: linear-gradient(135deg, #4e54c8, #8f94fb);
+          background: #4e54c8;
           color: white;
-          box-shadow: 0 4px 15px rgba(78, 84, 200, 0.4);
         }
         
         .btn-primary:hover {
+          background: #3f43a1;
           transform: translateY(-2px);
-          box-shadow: 0 6px 20px rgba(78, 84, 200, 0.6);
         }
         
         .btn-secondary {
@@ -326,133 +384,87 @@ export default function Home() {
         }
         
         .btn-success {
-          background: linear-gradient(135deg, #28a745, #20c997);
+          background: #28a745;
           color: white;
-          box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4);
         }
         
         .btn-success:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 20px rgba(40, 167, 69, 0.6);
+          background: #218838;
         }
         
         .btn-danger {
-          background: linear-gradient(135deg, #dc3545, #e83e8c);
+          background: #dc3545;
           color: white;
-          box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4);
         }
         
         .btn-danger:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 20px rgba(220, 53, 69, 0.6);
+          background: #bd2130;
         }
         
         .btn:disabled {
           opacity: 0.6;
           cursor: not-allowed;
-          transform: none !important;
         }
         
-        /* Hero Section */
         .hero {
           text-align: center;
-          padding: 3rem 0;
-          background: rgba(0, 0, 0, 0.5);
-          border-radius: 20px;
-          margin: 2rem 0;
-          backdrop-filter: blur(10px);
+          padding: 2rem 0;
+          margin: 1rem 0;
         }
         
         .hero h1 {
-          font-size: 3rem;
+          font-size: 2.5rem;
           margin-bottom: 1rem;
           background: linear-gradient(to right, #fdbb2d, #b21f1f);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
-          font-weight: 800;
         }
         
-        .hero p {
-          font-size: 1.2rem;
-          max-width: 800px;
-          margin: 0 auto 2rem;
-          color: #e1e1e1;
-          line-height: 1.6;
-        }
-        
-        /* Partner Logo */
-        .partner-logo {
-          text-align: center;
-          margin: 2rem 0;
-          padding: 2rem;
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 15px;
-          backdrop-filter: blur(10px);
-        }
-        
-        .partner-logo img {
-          max-width: 300px;
-          max-height: 120px;
-          margin-bottom: 1rem;
-          border-radius: 10px;
-          box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
-        }
-        
-        .partner-logo h3 {
-          color: #fdbb2d;
-          margin-bottom: 0.5rem;
-          font-size: 1.5rem;
-        }
-        
-        .partner-logo p {
-          color: #e1e1e1;
-          font-size: 1rem;
-        }
-        
-        /* Camera Section */
         .camera-section {
-          width: 100%;
           max-width: 800px;
           margin: 0 auto;
         }
         
         .camera-status {
           text-align: center;
-          margin-bottom: 1rem;
           padding: 1rem;
-          background: rgba(0, 0, 0, 0.5);
+          margin: 1rem 0;
+          background: rgba(0,0,0,0.5);
           border-radius: 10px;
-          font-size: 1.1rem;
+          min-height: 60px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-direction: column;
         }
         
-        .camera-status.scanning {
-          color: #fdbb2d;
-          animation: pulse 2s infinite;
+        .camera-status.error {
+          background: rgba(220, 53, 69, 0.2);
+          color: #ff6b6b;
         }
         
-        .camera-status.detected {
+        .camera-status.success {
+          background: rgba(40, 167, 69, 0.2);
           color: #00ff66;
-          background: rgba(0, 255, 102, 0.1);
         }
         
         .camera-frame {
           width: 100%;
-          height: 500px;
+          height: 400px;
           background: #000;
-          border-radius: 20px;
+          border-radius: 15px;
           overflow: hidden;
           position: relative;
-          display: flex;
-          justify-content: center;
-          align-items: center;
           border: 3px solid #4e54c8;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
         }
         
         .camera-placeholder {
-          text-align: center;
-          color: #4e54c8;
-          padding: 2rem;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
+          color: #6c757d;
         }
         
         .camera-placeholder i {
@@ -460,15 +472,11 @@ export default function Home() {
           margin-bottom: 1rem;
         }
         
-        .camera-placeholder p {
-          font-size: 1.1rem;
-          margin-top: 1rem;
-        }
-        
         .camera-feed {
           width: 100%;
           height: 100%;
           object-fit: cover;
+          display: block;
         }
         
         .scan-overlay {
@@ -483,202 +491,90 @@ export default function Home() {
         .scan-line {
           position: absolute;
           width: 100%;
-          height: 4px;
+          height: 3px;
           background: linear-gradient(to right, transparent, #fdbb2d, transparent);
-          top: 20%;
-          animation: scan 3s ease-in-out infinite;
-          box-shadow: 0 0 20px #fdbb2d;
+          animation: scan 2s ease-in-out infinite;
         }
         
         .detection-indicator {
           position: absolute;
-          top: 20px;
-          right: 20px;
-          background: rgba(0, 0, 0, 0.8);
-          padding: 10px 15px;
-          border-radius: 25px;
+          top: 10px;
+          right: 10px;
+          background: rgba(0,0,0,0.7);
+          padding: 5px 10px;
+          border-radius: 15px;
           display: flex;
           align-items: center;
-          gap: 8px;
-          z-index: 10;
-          backdrop-filter: blur(10px);
+          gap: 5px;
+          font-size: 0.8rem;
         }
         
         .detection-dot {
-          width: 12px;
-          height: 12px;
+          width: 8px;
+          height: 8px;
           border-radius: 50%;
           background: #ff4d4d;
-          transition: all 0.3s ease;
         }
         
         .detection-dot.active {
           background: #00ff66;
-          box-shadow: 0 0 15px #00ff66;
-          animation: pulse 1.5s infinite;
-        }
-        
-        .ar-content {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          z-index: 5;
-          text-align: center;
-        }
-        
-        .ar-video {
-          max-width: 300px;
-          max-height: 200px;
-          border-radius: 15px;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
-          border: 3px solid #fdbb2d;
-        }
-        
-        .project-info {
-          background: rgba(0, 0, 0, 0.9);
-          padding: 1rem;
-          border-radius: 10px;
-          margin-top: 1rem;
-          backdrop-filter: blur(10px);
+          animation: pulse 1s infinite;
         }
         
         .camera-controls {
           display: flex;
+          gap: 10px;
           justify-content: center;
-          gap: 15px;
-          margin-top: 2rem;
+          margin: 1rem 0;
           flex-wrap: wrap;
         }
         
-        /* Permission Help */
         .permission-help {
-          background: rgba(0, 0, 0, 0.7);
+          background: rgba(0,0,0,0.7);
+          padding: 1rem;
           border-radius: 10px;
-          padding: 1.5rem;
-          margin-top: 1rem;
-          backdrop-filter: blur(10px);
+          margin: 1rem 0;
         }
         
         .permission-help h3 {
           color: #fdbb2d;
-          margin-bottom: 1rem;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-        
-        .permission-help ul {
-          text-align: left;
-          margin-left: 2rem;
-        }
-        
-        .permission-help li {
           margin-bottom: 0.5rem;
-          line-height: 1.5;
         }
         
-        /* Modals */
         .modal {
           position: fixed;
           top: 0;
           left: 0;
           width: 100%;
           height: 100%;
-          background: rgba(0, 0, 0, 0.9);
-          z-index: 1000;
+          background: rgba(0,0,0,0.8);
           display: flex;
           justify-content: center;
           align-items: center;
-          padding: 20px;
+          z-index: 1000;
         }
         
         .modal-content {
-          background: linear-gradient(135deg, #1a2a6c, #3a3f7d);
-          width: 100%;
-          max-width: 500px;
-          border-radius: 20px;
+          background: #1a2a6c;
           padding: 2rem;
-          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-          position: relative;
-          max-height: 90vh;
-          overflow-y: auto;
-        }
-        
-        .modal-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1.5rem;
-        }
-        
-        .modal-header h2 {
-          color: #fdbb2d;
-          font-size: 1.5rem;
-        }
-        
-        .close-modal {
-          font-size: 2rem;
-          cursor: pointer;
-          color: #fdbb2d;
-          transition: color 0.3s ease;
-        }
-        
-        .close-modal:hover {
-          color: #ff6b6b;
+          border-radius: 10px;
+          max-width: 500px;
+          width: 90%;
         }
         
         .form-group {
-          margin-bottom: 1.5rem;
-        }
-        
-        .form-group label {
-          display: block;
-          margin-bottom: 0.5rem;
-          color: #fdbb2d;
-          font-weight: 600;
+          margin-bottom: 1rem;
         }
         
         .form-group input {
           width: 100%;
-          padding: 12px 15px;
-          border-radius: 10px;
-          border: 2px solid #4e54c8;
-          background: rgba(0, 0, 0, 0.3);
-          color: white;
-          font-size: 1rem;
-          transition: border-color 0.3s ease;
-        }
-        
-        .form-group input:focus {
-          outline: none;
-          border-color: #fdbb2d;
-        }
-        
-        .login-error {
-          color: #ff6b6b;
-          text-align: center;
-          margin: 1rem 0;
-          padding: 0.5rem;
-          background: rgba(255, 107, 107, 0.1);
+          padding: 10px;
           border-radius: 5px;
+          border: 1px solid #4e54c8;
+          background: rgba(0,0,0,0.3);
+          color: white;
         }
         
-        /* Footer */
-        footer {
-          text-align: center;
-          padding: 2rem;
-          background: rgba(0, 0, 0, 0.7);
-          margin-top: 3rem;
-          backdrop-filter: blur(10px);
-        }
-        
-        footer p {
-          margin: 0.5rem 0;
-          color: #e1e1e1;
-        }
-        
-        /* Animations */
         @keyframes scan {
           0% { top: 10%; }
           50% { top: 90%; }
@@ -697,153 +593,87 @@ export default function Home() {
           align-items: center;
           justify-content: center;
           height: 100vh;
-          gap: 1rem;
         }
         
-        .spinner {
-          width: 50px;
-          height: 50px;
-          border: 5px solid rgba(255, 255, 255, 0.3);
-          border-top: 5px solid #fdbb2d;
-          border-radius: 50%;
-          animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        
-        /* Responsive Design */
         @media (max-width: 768px) {
-          header {
-            padding: 1rem;
-            flex-direction: column;
-            gap: 1rem;
-          }
-          
           .hero h1 {
             font-size: 2rem;
-          }
-          
-          .hero p {
-            font-size: 1rem;
-            padding: 0 1rem;
-          }
-          
-          .camera-frame {
-            height: 400px;
-          }
-          
-          .camera-controls {
-            flex-direction: column;
-            align-items: center;
-          }
-          
-          .btn {
-            width: 100%;
-            max-width: 300px;
-            justify-content: center;
-          }
-          
-          .partner-logo img {
-            max-width: 250px;
-          }
-          
-          .ar-video {
-            max-width: 250px;
-            max-height: 150px;
-          }
-        }
-        
-        @media (max-width: 480px) {
-          .container {
-            padding: 0 10px;
-          }
-          
-          .hero {
-            padding: 2rem 1rem;
           }
           
           .camera-frame {
             height: 300px;
           }
           
-          .modal-content {
-            padding: 1.5rem;
-            margin: 10px;
+          .camera-controls {
+            flex-direction: column;
+          }
+          
+          .btn {
+            width: 100%;
+            max-width: 300px;
           }
         }
       `}</style>
 
-      {/* Header */}
       <header>
         <div className="logo">
           <i className="fas fa-vr-cardboard"></i>
-          <span className="logo-text">马佛青AR体验系统</span>
+          <span className="logo-text">马佛青AR系统</span>
         </div>
         <div className="auth-buttons">
           {isLoggedIn ? (
-            <>
-              <button className="btn btn-success" onClick={() => router.push('/admin')}>
-                <i className="fas fa-cogs"></i> 管理后台
-              </button>
-              <button className="btn btn-secondary" onClick={handleLogout}>
-                <i className="fas fa-sign-out-alt"></i> 退出
-              </button>
-            </>
+            <button className="btn btn-secondary" onClick={handleLogout}>
+              <i className="fas fa-sign-out-alt"></i> 退出
+            </button>
           ) : (
             <button className="btn btn-secondary" onClick={() => setShowLogin(true)}>
-              <i className="fas fa-user-lock"></i> 管理员登录
+              <i className="fas fa-user-lock"></i> 登录
             </button>
           )}
         </div>
       </header>
 
-      {/* Main Content */}
       <div className="container">
         <div className="hero">
-          <h1>AR增强现实体验平台</h1>
-          <p>使用手机摄像头扫描特定图像，探索隐藏在图像中的佛法智慧与传统文化</p>
+          <h1>AR图像识别体验</h1>
+          <p>扫描特定图像，发现隐藏的佛法内容</p>
           
-          <div className="partner-logo">
-            <img 
-              src="https://ybam-wordpress-media.s3.ap-southeast-1.amazonaws.com/wp-content/uploads/2024/05/03162711/ybamlogo2.png" 
-              alt="马来西亚佛教青年总会标志" 
-              onError={(e) => {
-                e.target.style.display = 'none';
-                e.target.nextElementSibling.style.display = 'block';
-              }}
-            />
-            <div style={{display: 'none'}}>
-              <i className="fas fa-dharmachakra" style={{fontSize: '4rem', color: '#fdbb2d', marginBottom: '1rem'}}></i>
-            </div>
-            <h3>马来西亚佛教青年总会</h3>
-            <p>Young Buddhist Association of Malaysia</p>
-          </div>
-          
-          {/* Camera Section */}
           <div className="camera-section">
-            <div className={`camera-status ${scanning ? 'scanning' : ''} ${detected ? 'detected' : ''}`}>
-              <i className={`fas ${scanning ? 'fa-search' : detected ? 'fa-check-circle' : 'fa-info-circle'}`}></i>
-              {cameraStatus}
+            <div className={`camera-status ${cameraError ? 'error' : detected ? 'success' : ''}`}>
+              {cameraError ? (
+                <>
+                  <i className="fas fa-exclamation-triangle"></i>
+                  <div>{cameraStatus}</div>
+                </>
+              ) : detected ? (
+                <>
+                  <i className="fas fa-check-circle"></i>
+                  <div>{cameraStatus}</div>
+                </>
+              ) : (
+                <>
+                  <i className="fas fa-camera"></i>
+                  <div>{cameraStatus}</div>
+                </>
+              )}
             </div>
             
             <div className="camera-frame">
               {!isCameraOpen ? (
                 <div className="camera-placeholder">
                   <i className="fas fa-camera"></i>
-                  <p>点击下方按钮开启摄像头</p>
-                  <p>请确保授予摄像头访问权限</p>
+                  <p>准备扫描</p>
                 </div>
               ) : (
                 <>
                   <video 
-                    ref={videoRef} 
-                    className="camera-feed" 
-                    autoPlay 
-                    playsInline 
+                    ref={videoRef}
+                    className="camera-feed"
+                    autoPlay
+                    playsInline
                     muted
+                    onLoadedData={() => console.log('视频加载完成')}
+                    onError={(e) => console.error('视频错误:', e)}
                   />
                   <div className="scan-overlay">
                     {scanning && <div className="scan-line" />}
@@ -852,32 +682,15 @@ export default function Home() {
                       <span>{detected ? '已检测' : '扫描中'}</span>
                     </div>
                   </div>
-                  
-                  {detected && currentProject && (
-                    <div className="ar-content">
-                      <video 
-                        className="ar-video"
-                        src={currentProject.videoURL} 
-                        controls 
-                        autoPlay 
-                        loop 
-                        playsInline 
-                        muted
-                      />
-                      <div className="project-info">
-                        <h4>{currentProject.name}</h4>
-                        <p>AR内容已加载</p>
-                      </div>
-                    </div>
-                  )}
+                  <DebugInfo />
                 </>
               )}
             </div>
             
             <div className="camera-controls">
               {!isCameraOpen ? (
-                <button className="btn btn-primary" onClick={startCamera} disabled={scanning}>
-                  <i className="fas fa-camera"></i> 开启相机扫描
+                <button className="btn btn-primary" onClick={startCamera}>
+                  <i className="fas fa-camera"></i> 开启相机
                 </button>
               ) : (
                 <>
@@ -887,25 +700,24 @@ export default function Home() {
                     </button>
                   ) : (
                     <button className="btn btn-secondary" onClick={stopCamera}>
-                      <i className="fas fa-stop"></i> 停止扫描
+                      <i className="fas fa-stop"></i> 停止
                     </button>
                   )}
                 </>
               )}
               <button className="btn btn-secondary" onClick={() => setShowHelpModal(true)}>
-                <i className="fas fa-question-circle"></i> 使用帮助
+                <i className="fas fa-question-circle"></i> 帮助
               </button>
             </div>
-            
+
             {showPermissionHelp && (
               <div className="permission-help">
-                <h3><i className="fas fa-exclamation-triangle"></i> 摄像头访问提示</h3>
+                <h3>摄像头使用提示</h3>
                 <ul>
-                  <li>确保您使用的是HTTPS安全连接</li>
-                  <li>检查浏览器权限设置，允许此网站使用摄像头</li>
-                  <li>手机用户请使用Chrome或Safari浏览器</li>
-                  <li>确保没有其他应用正在使用摄像头</li>
-                  <li>如仍无法使用，请尝试刷新页面</li>
+                  <li>确保使用 HTTPS 连接</li>
+                  <li>允许浏览器访问摄像头</li>
+                  <li>检查摄像头是否被其他应用占用</li>
+                  <li>尝试使用 Chrome 或 Safari 浏览器</li>
                 </ul>
               </div>
             )}
@@ -913,89 +725,60 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Login Modal */}
       {showLogin && (
         <div className="modal">
           <div className="modal-content">
             <div className="modal-header">
               <h2>管理员登录</h2>
-              <span className="close-modal" onClick={() => setShowLogin(false)}>&times;</span>
+              <button onClick={() => setShowLogin(false)}>×</button>
             </div>
             <form onSubmit={handleLogin}>
               <div className="form-group">
-                <label htmlFor="username">用户名</label>
                 <input
                   type="text"
-                  id="username"
-                  placeholder="请输入用户名"
+                  placeholder="用户名"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
                 />
               </div>
               <div className="form-group">
-                <label htmlFor="password">密码</label>
                 <input
                   type="password"
-                  id="password"
-                  placeholder="请输入密码"
+                  placeholder="密码"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                 />
               </div>
-              {loginError && <div className="login-error">{loginError}</div>}
-              <button 
-                type="submit" 
-                className="btn btn-primary" 
-                style={{width: '100%'}} 
-                disabled={isLoading}
-              >
-                <i className="fas fa-sign-in-alt"></i> 
-                {isLoading ? '登录中...' : '登录系统'}
+              {loginError && <p style={{color: 'red'}}>{loginError}</p>}
+              <button type="submit" className="btn btn-primary" disabled={isLoading}>
+                {isLoading ? '登录中...' : '登录'}
               </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* Help Modal */}
       {showHelpModal && (
         <div className="modal">
           <div className="modal-content">
             <div className="modal-header">
-              <h2>AR扫描使用指南</h2>
-              <span className="close-modal" onClick={() => setShowHelpModal(false)}>&times;</span>
+              <h2>使用帮助</h2>
+              <button onClick={() => setShowHelpModal(false)}>×</button>
             </div>
-            <div className="form-group">
-              <h3><i className="fas fa-mobile-alt"></i> 使用步骤</h3>
-              <ol style={{marginLeft: '1.5rem', lineHeight: '1.8'}}>
-                <li>点击"开启相机扫描"按钮授权摄像头访问</li>
-                <li>将摄像头对准已注册的AR标记图像</li>
-                <li>保持手机稳定，等待系统自动识别</li>
-                <li>识别成功后即可观看AR增强内容</li>
-                <li>可移动手机从不同角度体验AR效果</li>
+            <div>
+              <h3>相机无法使用的解决方案：</h3>
+              <ol>
+                <li>使用 Chrome 或 Safari 浏览器</li>
+                <li>确保网址以 https:// 开头</li>
+                <li>允许网站使用摄像头</li>
+                <li>重启浏览器后重试</li>
               </ol>
-              
-              <h3><i className="fas fa-image"></i> 支持的图像类型</h3>
-              <ul style={{marginLeft: '1.5rem', lineHeight: '1.8'}}>
-                <li>马佛青文化委员会指定的AR图像</li>
-                <li>高对比度、特征明显的图片</li>
-                <li>印刷清晰的手绘或设计图案</li>
-              </ul>
-              
-              <h3><i className="fas fa-headset"></i> 技术支持</h3>
-              <p>如遇到技术问题，请联系：马佛青文化委员会技术支援</p>
             </div>
           </div>
         </div>
       )}
-
-      {/* Footer */}
-      <footer>
-        <p>© 2025 马来西亚佛教青年总会文化委员会 - AR增强现实体验系统</p>
-        <p>技术支持: 马佛青文化委员会 | 传承佛法 · 创新传播</p>
-      </footer>
     </div>
   );
 }
