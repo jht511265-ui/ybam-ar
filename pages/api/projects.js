@@ -1,4 +1,4 @@
-import clientPromise from '../../lib/mongodb';
+import { getDatabase, testConnection } from '../../lib/mongodb';
 import { ObjectId } from 'mongodb';
 import { verifyToken } from './auth';
 
@@ -13,49 +13,22 @@ export default async function handler(req, res) {
   }
   
   try {
-    console.log('正在连接 MongoDB Cluster0...');
+    console.log('正在连接数据库 cluster0...');
     
-    const client = await clientPromise;
-    
-    // 测试 Cluster0 连接
-    try {
-      await client.db().admin().ping();
-      console.log('MongoDB Cluster0 连接成功');
-    } catch (pingError) {
-      console.error('Cluster0 连接测试失败:', pingError);
-      
-      // Cluster0 特定错误处理
-      if (pingError.code === 8000) {
-        return res.status(500).json({ 
-          message: 'Cluster0 认证失败',
-          suggestions: [
-            '检查 MongoDB Atlas 用户名和密码',
-            '确认数据库用户有读写权限',
-            '检查连接字符串中的集群名称是否为 cluster0'
-          ],
-          error: 'Authentication failed'
-        });
-      }
-      
-      if (pingError.code === 18) {
-        return res.status(500).json({ 
-          message: '无法连接到 Cluster0',
-          suggestions: [
-            '检查网络连接',
-            '确认 IP 地址已添加到 Atlas 白名单',
-            '尝试使用 MongoDB Compass 测试连接'
-          ],
-          error: 'Connection failed'
-        });
-      }
-      
+    // 测试连接
+    const connectionTest = await testConnection();
+    if (!connectionTest.success) {
       return res.status(500).json({ 
         message: '数据库连接失败',
-        error: pingError.message 
+        error: connectionTest.error,
+        database: 'cluster0'
       });
     }
     
-    const db = client.db('ar-project');
+    console.log('成功连接到数据库 cluster0');
+    
+    // 获取数据库连接
+    const db = await getDatabase();
     
     // 对于GET请求，不需要验证token
     if (req.method !== 'GET') {
@@ -73,12 +46,15 @@ export default async function handler(req, res) {
       }
     }
     
-    // ... 其余的业务逻辑保持不变
+    // 业务逻辑
     if (req.method === 'GET') {
+      console.log('从 cluster0 数据库获取项目列表');
       const projects = await db.collection('projects').find({}).sort({ createdAt: -1 }).toArray();
+      console.log(`成功获取 ${projects.length} 个项目`);
       res.status(200).json(projects);
     } 
     else if (req.method === 'POST') {
+      console.log('在 cluster0 数据库创建新项目');
       const { name, originalImage, videoURL, markerImage } = req.body;
       
       if (!name || !originalImage || !videoURL) {
@@ -97,9 +73,11 @@ export default async function handler(req, res) {
       };
       
       const result = await db.collection('projects').insertOne(project);
+      console.log('项目创建成功，ID:', result.insertedId);
       res.status(201).json({ ...project, _id: result.insertedId });
     }
     else if (req.method === 'PUT') {
+      console.log('在 cluster0 数据库更新项目');
       const { id, name, originalImage, videoURL, markerImage } = req.body;
       
       if (!id || !name) {
@@ -127,6 +105,7 @@ export default async function handler(req, res) {
       res.status(200).json({ message: '项目更新成功' });
     }
     else if (req.method === 'DELETE') {
+      console.log('从 cluster0 数据库删除项目');
       const { id } = req.body;
       
       if (!id) {
@@ -148,27 +127,14 @@ export default async function handler(req, res) {
     }
     
   } catch (error) {
-    console.error('Cluster0 API错误:', error);
+    console.error('数据库操作错误 (cluster0):', error);
     
-    // Cluster0 特定错误处理
     if (error.name === 'MongoServerError') {
-      switch (error.code) {
-        case 8000:
-          return res.status(500).json({ 
-            message: 'Cluster0 认证失败',
-            error: '请检查用户名、密码和集群名称'
-          });
-        case 18:
-          return res.status(500).json({ 
-            message: '无法连接到 Cluster0',
-            error: '网络连接问题或IP未在白名单中'
-          });
-        default:
-          return res.status(500).json({ 
-            message: 'Cluster0 服务器错误',
-            error: error.message 
-          });
-      }
+      return res.status(500).json({ 
+        message: '数据库服务器错误',
+        error: error.message,
+        database: 'cluster0'
+      });
     }
     
     res.status(500).json({ 
