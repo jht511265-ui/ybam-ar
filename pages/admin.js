@@ -84,27 +84,40 @@ export default function Admin() {
     }
   };
 
-  const uploadFiles = async (files) => {
-    const uploadFormData = new FormData();
-    
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const uploadFilesToCloudinary = async (files) => {
+    const filesBase64 = {};
+
+    // 将文件转换为 base64
     if (files.originalImage) {
-      uploadFormData.append('originalImage', files.originalImage);
+      filesBase64.originalImage = await fileToBase64(files.originalImage);
     }
     if (files.arVideo) {
-      uploadFormData.append('arVideo', files.arVideo);
+      filesBase64.arVideo = await fileToBase64(files.arVideo);
     }
     if (files.markerImage) {
-      uploadFormData.append('markerImage', files.markerImage);
+      filesBase64.markerImage = await fileToBase64(files.markerImage);
     }
 
     const response = await fetch('/api/upload', {
       method: 'POST',
-      body: uploadFormData,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ files: filesBase64 }),
     });
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.message || '文件上传失败');
+      throw new Error(errorData.error || '文件上传失败');
     }
 
     return await response.json();
@@ -139,27 +152,32 @@ export default function Admin() {
     setMessage('');
 
     try {
-      console.log('开始上传文件...');
+      console.log('开始上传文件到 Cloudinary...');
       
-      // 首先上传文件
-      const uploadResult = await uploadFiles({
+      // 首先上传文件到 Cloudinary
+      const uploadResult = await uploadFilesToCloudinary({
         originalImage: formData.originalImage,
         arVideo: formData.arVideo,
         markerImage: formData.markerImage
       });
 
-      console.log('文件上传结果:', uploadResult);
+      console.log('Cloudinary 上传结果:', uploadResult);
 
       if (!uploadResult.success) {
-        throw new Error(uploadResult.message);
+        throw new Error(uploadResult.error || '文件上传失败');
       }
 
-      // 然后创建项目
+      // 然后创建项目记录
       const projectData = {
         name: formData.name,
         originalImage: uploadResult.data.originalImage,
         videoURL: uploadResult.data.videoURL,
-        markerImage: uploadResult.data.markerImage || uploadResult.data.originalImage
+        markerImage: uploadResult.data.markerImage || uploadResult.data.originalImage,
+        cloudinaryData: {
+          originalImagePublicId: uploadResult.data.originalImagePublicId,
+          videoPublicId: uploadResult.data.videoPublicId,
+          markerImagePublicId: uploadResult.data.markerImagePublicId
+        }
       };
 
       console.log('创建项目数据:', projectData);
@@ -174,15 +192,14 @@ export default function Admin() {
       });
 
       const responseData = await response.json();
-      console.log('创建项目响应:', responseData);
 
       if (response.ok) {
         setShowCreateModal(false);
         setFormData({ name: '', originalImage: null, arVideo: null, markerImage: null });
         setPreviewUrls({ originalImage: '', arVideo: '', markerImage: '' });
         fetchProjects(authToken);
-        setMessage('项目创建成功！');
-        setTimeout(() => setMessage(''), 3000);
+        setMessage('项目创建成功！文件已上传到 Cloudinary');
+        setTimeout(() => setMessage(''), 5000);
       } else {
         throw new Error(responseData.message || '创建项目失败');
       }
