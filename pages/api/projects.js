@@ -13,17 +13,42 @@ export default async function handler(req, res) {
   }
   
   try {
-    console.log('正在连接 MongoDB...');
+    console.log('正在连接 MongoDB Cluster0...');
     
-    // 测试 MongoDB 连接
     const client = await clientPromise;
     
-    // 检查连接状态
+    // 测试 Cluster0 连接
     try {
       await client.db().admin().ping();
-      console.log('MongoDB 连接成功');
+      console.log('MongoDB Cluster0 连接成功');
     } catch (pingError) {
-      console.error('MongoDB 连接测试失败:', pingError);
+      console.error('Cluster0 连接测试失败:', pingError);
+      
+      // Cluster0 特定错误处理
+      if (pingError.code === 8000) {
+        return res.status(500).json({ 
+          message: 'Cluster0 认证失败',
+          suggestions: [
+            '检查 MongoDB Atlas 用户名和密码',
+            '确认数据库用户有读写权限',
+            '检查连接字符串中的集群名称是否为 cluster0'
+          ],
+          error: 'Authentication failed'
+        });
+      }
+      
+      if (pingError.code === 18) {
+        return res.status(500).json({ 
+          message: '无法连接到 Cluster0',
+          suggestions: [
+            '检查网络连接',
+            '确认 IP 地址已添加到 Atlas 白名单',
+            '尝试使用 MongoDB Compass 测试连接'
+          ],
+          error: 'Connection failed'
+        });
+      }
+      
       return res.status(500).json({ 
         message: '数据库连接失败',
         error: pingError.message 
@@ -32,50 +57,32 @@ export default async function handler(req, res) {
     
     const db = client.db('ar-project');
     
-    // 对于GET请求，不需要验证token（允许前端获取项目列表）
+    // 对于GET请求，不需要验证token
     if (req.method !== 'GET') {
-      // 验证 token
       const authHeader = req.headers.authorization;
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return res.status(401).json({ message: '未授权访问' });
       }
       
       const token = authHeader.split(' ')[1];
-      let decoded;
-      
       try {
-        decoded = verifyToken(token);
+        const decoded = verifyToken(token);
         console.log('Token验证成功，用户:', decoded.username);
       } catch (error) {
-        console.error('Token验证失败:', error);
         return res.status(401).json({ message: 'Token无效' });
       }
     }
     
+    // ... 其余的业务逻辑保持不变
     if (req.method === 'GET') {
-      console.log('获取项目列表');
-      try {
-        const projects = await db.collection('projects').find({}).sort({ createdAt: -1 }).toArray();
-        console.log(`成功获取 ${projects.length} 个项目`);
-        res.status(200).json(projects);
-      } catch (dbError) {
-        console.error('数据库查询错误:', dbError);
-        res.status(500).json({ message: '获取项目列表失败' });
-      }
+      const projects = await db.collection('projects').find({}).sort({ createdAt: -1 }).toArray();
+      res.status(200).json(projects);
     } 
     else if (req.method === 'POST') {
-      console.log('创建新项目，数据:', req.body);
       const { name, originalImage, videoURL, markerImage } = req.body;
       
       if (!name || !originalImage || !videoURL) {
-        return res.status(400).json({ 
-          message: '请填写项目名称并上传所有必需文件',
-          missing: {
-            name: !name,
-            originalImage: !originalImage,
-            videoURL: !videoURL
-          }
-        });
+        return res.status(400).json({ message: '请填写项目名称并上传所有必需文件' });
       }
       
       const project = {
@@ -89,31 +96,14 @@ export default async function handler(req, res) {
         createdBy: 'admin'
       };
       
-      try {
-        const result = await db.collection('projects').insertOne(project);
-        console.log('项目创建成功，ID:', result.insertedId);
-        res.status(201).json({ 
-          ...project, 
-          _id: result.insertedId,
-          message: '项目创建成功'
-        });
-      } catch (dbError) {
-        console.error('数据库插入错误:', dbError);
-        res.status(500).json({ message: '创建项目失败' });
-      }
+      const result = await db.collection('projects').insertOne(project);
+      res.status(201).json({ ...project, _id: result.insertedId });
     }
     else if (req.method === 'PUT') {
-      console.log('更新项目，数据:', req.body);
       const { id, name, originalImage, videoURL, markerImage } = req.body;
       
       if (!id || !name) {
-        return res.status(400).json({ 
-          message: '项目ID和名称不能为空',
-          missing: {
-            id: !id,
-            name: !name
-          }
-        });
+        return res.status(400).json({ message: '项目ID和名称不能为空' });
       }
       
       const updateData = {
@@ -125,78 +115,60 @@ export default async function handler(req, res) {
       if (videoURL) updateData.videoURL = videoURL;
       if (markerImage) updateData.markerImage = markerImage;
       
-      try {
-        const result = await db.collection('projects').updateOne(
-          { _id: new ObjectId(id) },
-          { $set: updateData }
-        );
-        
-        if (result.matchedCount === 0) {
-          return res.status(404).json({ message: '项目未找到' });
-        }
-        
-        console.log('项目更新成功，影响文档数:', result.modifiedCount);
-        res.status(200).json({ 
-          message: '项目更新成功',
-          modifiedCount: result.modifiedCount 
-        });
-      } catch (dbError) {
-        console.error('数据库更新错误:', dbError);
-        res.status(500).json({ message: '更新项目失败' });
+      const result = await db.collection('projects').updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updateData }
+      );
+      
+      if (result.matchedCount === 0) {
+        return res.status(404).json({ message: '项目未找到' });
       }
+      
+      res.status(200).json({ message: '项目更新成功' });
     }
     else if (req.method === 'DELETE') {
-      console.log('删除项目，ID:', req.body.id);
       const { id } = req.body;
       
       if (!id) {
         return res.status(400).json({ message: '项目ID不能为空' });
       }
       
-      try {
-        const result = await db.collection('projects').deleteOne({ 
-          _id: new ObjectId(id) 
-        });
-        
-        if (result.deletedCount === 0) {
-          return res.status(404).json({ message: '项目未找到' });
-        }
-        
-        console.log('项目删除成功，删除文档数:', result.deletedCount);
-        res.status(200).json({ 
-          message: '项目删除成功',
-          deletedCount: result.deletedCount 
-        });
-      } catch (dbError) {
-        console.error('数据库删除错误:', dbError);
-        res.status(500).json({ message: '删除项目失败' });
+      const result = await db.collection('projects').deleteOne({ 
+        _id: new ObjectId(id) 
+      });
+      
+      if (result.deletedCount === 0) {
+        return res.status(404).json({ message: '项目未找到' });
       }
+      
+      res.status(200).json({ message: '项目删除成功' });
     }
     else {
       res.status(405).json({ message: '方法不允许' });
     }
+    
   } catch (error) {
-    console.error('API严重错误:', error);
+    console.error('Cluster0 API错误:', error);
     
-    // 更详细的错误分类
+    // Cluster0 特定错误处理
     if (error.name === 'MongoServerError') {
-      if (error.code === 8000) {
-        return res.status(500).json({ 
-          message: '数据库认证失败，请检查MongoDB连接字符串',
-          error: 'Authentication failed'
-        });
+      switch (error.code) {
+        case 8000:
+          return res.status(500).json({ 
+            message: 'Cluster0 认证失败',
+            error: '请检查用户名、密码和集群名称'
+          });
+        case 18:
+          return res.status(500).json({ 
+            message: '无法连接到 Cluster0',
+            error: '网络连接问题或IP未在白名单中'
+          });
+        default:
+          return res.status(500).json({ 
+            message: 'Cluster0 服务器错误',
+            error: error.message 
+          });
       }
-      return res.status(500).json({ 
-        message: '数据库服务器错误',
-        error: error.message 
-      });
-    }
-    
-    if (error.name === 'MongoNetworkError') {
-      return res.status(500).json({ 
-        message: '数据库网络连接错误',
-        error: 'Network error'
-      });
     }
     
     res.status(500).json({ 
