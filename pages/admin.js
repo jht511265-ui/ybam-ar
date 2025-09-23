@@ -117,7 +117,7 @@ export default function Admin() {
       filesBase64.markerImage = await fileToBase64(files.markerImage);
     }
 
-    // 调用新的 base64 上传接口
+    // 调用 base64 上传接口
     const response = await fetch('/api/upload-base64', {
       method: 'POST',
       headers: {
@@ -260,7 +260,7 @@ export default function Admin() {
     setMessage('');
   };
 
-  // 简单的文件上传组件
+  // 文件上传组件
   const FileUploadField = ({ label, fieldName, accept, required = false }) => (
     <div className="form-group">
       <label>{label} {required && <span style={{color: 'red'}}>*</span>}</label>
@@ -494,7 +494,6 @@ export default function Admin() {
           color: white;
         }
         
-        /* 修复文件上传样式 */
         .file-input-wrapper {
           position: relative;
           width: 100%;
