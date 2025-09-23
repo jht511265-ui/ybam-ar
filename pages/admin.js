@@ -881,3 +881,10 @@ export default function Admin() {
     </div>
   );
 }
+
+// 禁用静态生成，使用服务端渲染
+export async function getServerSideProps() {
+  return {
+    props: {},
+  };
+}
