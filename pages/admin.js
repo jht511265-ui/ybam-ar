@@ -98,6 +98,23 @@ export default function Admin() {
   const handleFileChange = (e, fieldName) => {
     const file = e.target.files[0];
     if (file) {
+      // 文件大小验证
+      const maxSize = fieldName === 'arVideo' ? 100 * 1024 * 1024 : 10 * 1024 * 1024; // 视频100MB，图片10MB
+      if (file.size > maxSize) {
+        setMessage(`❌ 文件大小超过限制: ${(file.size / 1024 / 1024).toFixed(2)}MB > ${(maxSize / 1024 / 1024).toFixed(2)}MB`);
+        return;
+      }
+
+      // 文件类型验证
+      if (fieldName === 'arVideo' && !file.type.startsWith('video/')) {
+        setMessage('❌ 请上传视频文件');
+        return;
+      }
+      if ((fieldName === 'originalImage' || fieldName === 'markerImage') && !file.type.startsWith('image/')) {
+        setMessage('❌ 请上传图片文件');
+        return;
+      }
+
       setFormData(prev => ({
         ...prev,
         [fieldName]: file
@@ -115,128 +132,175 @@ export default function Admin() {
         [fieldName]: previewUrl
       }));
 
-      console.log(`文件选择: ${fieldName} - ${file.name}`);
+      console.log(`文件选择: ${fieldName} - ${file.name} - ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+      setMessage(`✅ ${fieldName === 'arVideo' ? '视频' : '图片'}文件已选择`);
     }
   };
 
   const fileToBase64 = (file) => {
     return new Promise((resolve, reject) => {
+      if (!file) {
+        reject(new Error('文件为空'));
+        return;
+      }
+      
       const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result);
+      reader.onload = () => {
+        const base64 = reader.result;
+        if (typeof base64 === 'string') {
+          resolve(base64);
+        } else {
+          reject(new Error('文件读取失败'));
+        }
+      };
       reader.onerror = error => reject(error);
+      reader.readAsDataURL(file);
     });
   };
 
   const uploadFilesToCloudinary = async (files) => {
+    console.log('开始转换文件为base64...');
+    
     const filesBase64 = {};
+    const errors = [];
 
-    // 将文件转换为 base64
-    if (files.originalImage) {
-      console.log('转换原始图像为 base64');
-      filesBase64.originalImage = await fileToBase64(files.originalImage);
+    try {
+      // 逐个转换文件
+      if (files.originalImage) {
+        console.log('转换原始图像...');
+        try {
+          filesBase64.originalImage = await fileToBase64(files.originalImage);
+          console.log('原始图像转换成功，大小:', filesBase64.originalImage.length);
+        } catch (error) {
+          errors.push(`原始图像转换失败: ${error.message}`);
+        }
+      }
+
+      if (files.arVideo) {
+        console.log('转换AR视频...');
+        try {
+          filesBase64.arVideo = await fileToBase64(files.arVideo);
+          console.log('AR视频转换成功，大小:', filesBase64.arVideo.length);
+        } catch (error) {
+          errors.push(`AR视频转换失败: ${error.message}`);
+        }
+      }
+
+      if (files.markerImage) {
+        console.log('转换标记图像...');
+        try {
+          filesBase64.markerImage = await fileToBase64(files.markerImage);
+          console.log('标记图像转换成功');
+        } catch (error) {
+          errors.push(`标记图像转换失败: ${error.message}`);
+        }
+      }
+
+      if (errors.length > 0) {
+        throw new Error(errors.join('; '));
+      }
+
+      console.log('准备上传文件到 Cloudinary:', Object.keys(filesBase64));
+
+      const response = await fetch('/api/upload-base64', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ files: filesBase64 }),
+      });
+
+      console.log('上传响应状态:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `上传失败: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('上传结果:', result);
+      
+      return result;
+
+    } catch (error) {
+      console.error('文件上传过程错误:', error);
+      throw error;
     }
-    if (files.arVideo) {
-      console.log('转换AR视频为 base64');
-      filesBase64.arVideo = await fileToBase64(files.arVideo);
-    }
-    if (files.markerImage) {
-      console.log('转换标记图像为 base64');
-      filesBase64.markerImage = await fileToBase64(files.markerImage);
-    }
-
-    console.log('准备上传文件到 Cloudinary:', Object.keys(filesBase64));
-
-    // 调用 base64 上传接口
-    const response = await fetch('/api/upload-base64', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ files: filesBase64 }),
-    });
-
-    console.log('Cloudinary 上传响应状态:', response.status);
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `文件上传失败: ${response.status}`);
-    }
-
-    return await response.json();
   };
 
   const handleCreate = async (e) => {
     e.preventDefault();
     
-    console.log('开始创建项目流程');
+    console.log('=== 开始创建项目 ===');
     
     if (!authToken) {
       setMessage('请先登录');
       return;
     }
 
-    // 基本验证
+    // 增强验证
     if (!formData.name?.trim()) {
       setMessage('请填写项目名称');
       return;
     }
 
+    if (!formData.originalImage) {
+      setMessage('请上传原始图像');
+      return;
+    }
+
+    if (!formData.arVideo) {
+      setMessage('请上传AR视频');
+      return;
+    }
+
     setIsLoading(true);
     setUploading(true);
-    setMessage('');
+    setMessage('开始创建项目...');
 
     try {
-      console.log('1. 开始文件上传流程');
+      console.log('1. 验证通过，开始文件上传');
       
       let projectData = {
         name: formData.name.trim()
       };
 
       // 文件上传
-      if (formData.originalImage || formData.arVideo) {
-        setMessage('正在上传文件到 Cloudinary...');
-        
-        console.log('2. 准备上传文件:', {
-          image: formData.originalImage?.name,
-          video: formData.arVideo?.name
-        });
-        
-        const uploadResult = await uploadFilesToCloudinary({
-          originalImage: formData.originalImage,
-          arVideo: formData.arVideo,
-          markerImage: formData.markerImage
-        });
+      setMessage('正在准备文件上传...');
+      
+      console.log('2. 准备上传的文件:', {
+        图像: formData.originalImage?.name,
+        视频: formData.arVideo?.name,
+        标记: formData.markerImage?.name
+      });
+      
+      const uploadResult = await uploadFilesToCloudinary({
+        originalImage: formData.originalImage,
+        arVideo: formData.arVideo,
+        markerImage: formData.markerImage
+      });
 
-        console.log('3. 文件上传结果:', uploadResult);
+      console.log('3. 文件上传结果:', uploadResult);
 
-        if (!uploadResult.success) {
-          throw new Error(uploadResult.error || '文件上传失败');
-        }
-
-        projectData = {
-          ...projectData,
-          originalImage: uploadResult.data.originalImage,
-          videoURL: uploadResult.data.videoURL,
-          markerImage: uploadResult.data.markerImage || uploadResult.data.originalImage,
-          cloudinaryData: {
-            originalImagePublicId: uploadResult.data.originalImagePublicId,
-            videoPublicId: uploadResult.data.videoPublicId,
-            markerImagePublicId: uploadResult.data.markerImagePublicId
-          }
-        };
-      } else {
-        // 如果没有文件，使用默认值
-        projectData = {
-          ...projectData,
-          originalImage: getDefaultImage('默认图像', 800, 600),
-          videoURL: getDefaultVideo(),
-          markerImage: getDefaultImage('标记图像', 400, 400)
-        };
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.error || '文件上传失败');
       }
 
-      console.log('4. 准备发送项目数据:', projectData);
-      setMessage('正在保存项目到 Cloudinary...');
+      // 构建项目数据
+      projectData = {
+        ...projectData,
+        originalImage: uploadResult.data.originalImage,
+        videoURL: uploadResult.data.videoURL,
+        markerImage: uploadResult.data.markerImage || uploadResult.data.originalImage,
+        cloudinaryData: {
+          originalImagePublicId: uploadResult.data.originalImagePublicId,
+          videoPublicId: uploadResult.data.videoPublicId,
+          markerImagePublicId: uploadResult.data.markerImagePublicId
+        }
+      };
+
+      console.log('4. 准备发送项目数据到API');
+      setMessage('正在保存项目信息...');
 
       // 发送创建项目请求
       const response = await fetch('/api/projects', {
@@ -251,17 +315,13 @@ export default function Admin() {
       console.log('5. API响应状态:', response.status);
 
       if (!response.ok) {
-        let errorText;
+        let errorText = '未知错误';
         try {
           errorText = await response.text();
-        } catch {
-          errorText = '无法读取错误信息';
+        } catch (e) {
+          errorText = `HTTP ${response.status}`;
         }
-        console.error('API错误详情:', { 
-          status: response.status, 
-          text: errorText 
-        });
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+        throw new Error(`创建项目失败: ${errorText}`);
       }
 
       const responseData = await response.json();
@@ -276,12 +336,17 @@ export default function Admin() {
       setMessage('✅ 项目创建成功！');
       
       // 刷新项目列表
-      setTimeout(() => setMessage(''), 3000);
-      await fetchProjects(authToken);
+      setTimeout(() => {
+        setMessage('');
+        fetchProjects(authToken);
+      }, 2000);
       
     } catch (error) {
-      console.error('创建项目失败:', error);
+      console.error('❌ 创建项目失败:', error);
       setMessage(`❌ 创建失败: ${error.message}`);
+      
+      // 显示详细错误信息
+      setTimeout(() => setMessage(''), 5000);
     } finally {
       setIsLoading(false);
       setUploading(false);
@@ -488,6 +553,7 @@ export default function Admin() {
           border-radius: 5px;
           margin-bottom: 15px;
           text-align: center;
+          font-weight: 500;
         }
         
         .message.success {
@@ -827,14 +893,14 @@ export default function Admin() {
                 </div>
 
                 <FileUploadField 
-                  label="原始图像" 
+                  label="原始图像 (必填，建议800x600)" 
                   fieldName="originalImage" 
                   accept="image/*"
                   required={true}
                 />
 
                 <FileUploadField 
-                  label="AR视频" 
+                  label="AR视频 (必填，支持MP4等格式)" 
                   fieldName="arVideo" 
                   accept="video/*"
                   required={true}
