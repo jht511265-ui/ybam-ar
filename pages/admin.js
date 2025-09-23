@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 
-// 工具函数
+// 修复工具函数 - 使用可靠的占位符服务
 const getDefaultImage = (text = '图片', width = 80, height = 60) => {
-  return `https://via.placeholder.com/${width}x${height}/4e54c8/ffffff?text=${encodeURIComponent(text)}`;
+  // 使用更可靠的占位符服务
+  return `https://placehold.co/${width}x${height}/4e54c8/ffffff/png?text=${encodeURIComponent(text)}`;
 };
 
 const getDefaultVideo = () => {
@@ -396,6 +397,31 @@ export default function Admin() {
     setMessage('');
   };
 
+  // 修复图片错误处理函数
+  const handleImageError = (e, type = 'default') => {
+    console.log(`图片加载失败，使用默认图片: ${type}`);
+    switch (type) {
+      case 'placeholder':
+        e.target.src = getDefaultImage('加载失败', 200, 150);
+        break;
+      case 'thumbnail':
+        e.target.src = getDefaultImage('缩略图', 80, 60);
+        break;
+      case 'no-data':
+        e.target.src = getDefaultImage('暂无数据', 120, 90);
+        break;
+      default:
+        e.target.src = getDefaultImage('图片', 80, 60);
+    }
+    e.target.onerror = null; // 防止循环错误
+  };
+
+  const handleVideoError = (e) => {
+    console.log('视频加载失败');
+    e.target.style.display = 'none';
+    e.target.onerror = null;
+  };
+
   // 文件上传组件
   const FileUploadField = ({ label, fieldName, accept, required = false }) => (
     <div className="form-group">
@@ -423,18 +449,14 @@ export default function Admin() {
               src={previewUrls[fieldName]} 
               controls 
               style={{ maxWidth: '200px', marginTop: '10px' }} 
-              onError={(e) => {
-                e.target.style.display = 'none';
-              }}
+              onError={handleVideoError}
             />
           ) : (
             <img 
               src={previewUrls[fieldName]} 
               alt="预览" 
               style={{ maxWidth: '200px', marginTop: '10px' }}
-              onError={(e) => {
-                e.target.src = getDefaultImage('预览加载失败', 200, 150);
-              }}
+              onError={(e) => handleImageError(e, 'placeholder')}
             />
           )}
         </div>
@@ -802,6 +824,7 @@ export default function Admin() {
                         src={getDefaultImage('暂无数据', 120, 90)} 
                         alt="暂无数据" 
                         style={{marginBottom: '1rem', borderRadius: '10px'}}
+                        onError={(e) => handleImageError(e, 'no-data')}
                       />
                       <p>暂无项目数据</p>
                       <p style={{fontSize: '0.9rem', opacity: 0.7}}>
@@ -829,9 +852,7 @@ export default function Admin() {
                             src={project.originalImage} 
                             alt="原始图像" 
                             style={{width: '80px', height: '60px', objectFit: 'cover', borderRadius: '5px'}}
-                            onError={(e) => {
-                              e.target.src = getDefaultImage('加载失败');
-                            }}
+                            onError={(e) => handleImageError(e, 'thumbnail')}
                           />
                         )}
                       </td>
@@ -842,9 +863,7 @@ export default function Admin() {
                               src={project.videoURL} 
                               style={{width: '80px', height: '60px', objectFit: 'cover', borderRadius: '5px'}}
                               muted
-                              onError={(e) => {
-                                e.target.style.display = 'none';
-                              }}
+                              onError={handleVideoError}
                             />
                           </div>
                         )}
