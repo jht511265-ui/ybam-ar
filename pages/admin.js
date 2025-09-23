@@ -226,6 +226,7 @@ export default function Admin() {
     }
   };
 
+  // 修复创建项目函数 - 添加更详细的调试信息
   const handleCreate = async (e) => {
     e.preventDefault();
     
@@ -238,25 +239,31 @@ export default function Admin() {
     });
     
     if (!authToken) {
+      console.log('❌ 没有认证token');
       setMessage('请先登录');
       return;
     }
 
     // 增强验证
     if (!formData.name?.trim()) {
+      console.log('❌ 项目名称为空');
       setMessage('请填写项目名称');
       return;
     }
 
     if (!formData.originalImage) {
+      console.log('❌ 原始图像为空');
       setMessage('请上传原始图像');
       return;
     }
 
     if (!formData.arVideo) {
+      console.log('❌ AR视频为空');
       setMessage('请上传AR视频');
       return;
     }
+
+    console.log('✅ 所有验证通过，开始创建流程');
 
     setIsLoading(true);
     setUploading(true);
@@ -272,7 +279,7 @@ export default function Admin() {
       // 文件上传
       setMessage('正在准备文件上传...');
       
-      console.log('2. 准备上传的文件');
+      console.log('2. 准备上传的文件到Cloudinary');
       
       const uploadResult = await uploadFilesToCloudinary({
         originalImage: formData.originalImage,
@@ -416,7 +423,7 @@ export default function Admin() {
     e.target.onerror = null;
   };
 
-  // 修复文件上传组件 - 添加必要的属性
+  // 修复文件上传组件
   const FileUploadField = ({ label, fieldName, accept, required = false }) => (
     <div className="form-group">
       <label htmlFor={`${fieldName}-input`}>
@@ -459,6 +466,41 @@ export default function Admin() {
       )}
     </div>
   );
+
+  // 添加测试函数 - 直接在控制台调用测试
+  const testCreateProject = async () => {
+    console.log('=== 测试创建项目 ===');
+    if (!authToken) {
+      console.log('❌ 没有认证token');
+      return;
+    }
+    
+    const testData = {
+      name: '测试项目_' + Date.now(),
+      originalImage: 'https://placehold.co/800x600/4e54c8/ffffff/png?text=测试图像',
+      videoURL: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+      markerImage: 'https://placehold.co/400x400/fdbb2d/000000/png?text=标记图像'
+    };
+    
+    console.log('测试数据:', testData);
+    
+    try {
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify(testData)
+      });
+      
+      console.log('测试响应状态:', response.status);
+      const result = await response.json();
+      console.log('测试结果:', result);
+    } catch (error) {
+      console.error('测试失败:', error);
+    }
+  };
 
   return (
     <div className="container">
@@ -743,6 +785,14 @@ export default function Admin() {
           margin-bottom: 1rem;
         }
         
+        .debug-panel {
+          background: rgba(255, 0, 0, 0.1);
+          padding: 1rem;
+          border-radius: 10px;
+          margin-top: 1rem;
+          border: 1px solid red;
+        }
+        
         @media (max-width: 768px) {
           .admin-container {
             padding: 10px;
@@ -774,6 +824,16 @@ export default function Admin() {
         <div className="storage-info">
           <h3><i className="fas fa-cloud"></i> Cloudinary 存储系统</h3>
           <p>项目数据安全存储在 Cloudinary 云存储中，支持持久化和高可用性。</p>
+        </div>
+
+        {/* 调试面板 */}
+        <div className="debug-panel">
+          <h4>调试面板</h4>
+          <p>当前状态: {isLoading ? '加载中' : uploading ? '上传中' : '就绪'}</p>
+          <p>认证Token: {authToken ? '已设置' : '未设置'}</p>
+          <button className="btn btn-secondary" onClick={testCreateProject}>
+            <i className="fas fa-bug"></i> 测试创建项目
+          </button>
         </div>
 
         <div className="admin-content">
@@ -944,6 +1004,7 @@ export default function Admin() {
                   className="btn btn-success" 
                   style={{width: '100%', marginTop: '20px'}}
                   disabled={isLoading || uploading}
+                  id="create-project-button"
                 >
                   <i className="fas fa-save"></i> 
                   {uploading ? '上传中...' : isLoading ? '创建中...' : '创建项目'}
