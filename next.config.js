@@ -1,28 +1,19 @@
-// 添加更多安全配置
+/** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
   images: {
     domains: ['res.cloudinary.com', 'via.placeholder.com'],
-    // 添加图片优化配置
     formats: ['image/webp', 'image/avif'],
   },
-  // 添加编译器优化
-  compiler: {
-    removeConsole: process.env.NODE_ENV === 'production', // 生产环境移除console
-  },
-  // 添加安全头
-  async headers() {
-    return [
-      {
-        source: '/(.*)',
-        headers: [
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY',
-          },
-        ],
-      },
-    ];
-  },
+  // 禁用静态导出时的预渲染错误
+  output: 'standalone',
+  // 禁用某些页面的静态生成
+  trailingSlash: true,
+  // 确保在构建时不会尝试预渲染动态页面
+  experimental: {
+    esmExternals: true,
+  }
 };
+
+module.exports = nextConfig;
