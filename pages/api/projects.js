@@ -1,8 +1,8 @@
 // pages/api/projects.js
 import { verifyToken } from './auth';
 
-// 临时使用内存存储（开发阶段）
-let temporaryProjects = [];
+// 使用内存存储项目数据
+let projectsStorage = [];
 
 export default async function handler(req, res) {
   // 设置 CORS 头
@@ -37,30 +37,31 @@ export default async function handler(req, res) {
     }
     
     if (req.method === 'GET') {
-      console.log('返回项目列表，数量:', temporaryProjects.length);
-      res.status(200).json(temporaryProjects);
+      console.log('返回项目列表，数量:', projectsStorage.length);
+      res.status(200).json(projectsStorage);
     } 
     else if (req.method === 'POST') {
       console.log('创建新项目，数据:', req.body);
-      const { name, originalImage, videoURL, markerImage } = req.body;
+      const { name, originalImage, videoURL, markerImage, cloudinaryData } = req.body;
       
       if (!name || !originalImage || !videoURL) {
         return res.status(400).json({ message: '请填写项目名称并上传所有必需文件' });
       }
       
       const project = {
-        _id: Date.now().toString(), // 临时ID
+        _id: Date.now().toString(),
         name,
         originalImage,
         videoURL,
         markerImage: markerImage || originalImage,
+        cloudinaryData: cloudinaryData || {},
         status: '已发布',
         createdAt: new Date(),
         updatedAt: new Date(),
         createdBy: 'admin'
       };
       
-      temporaryProjects.push(project);
+      projectsStorage.push(project);
       console.log('项目创建成功，ID:', project._id);
       
       res.status(201).json(project);
@@ -72,9 +73,9 @@ export default async function handler(req, res) {
         return res.status(400).json({ message: '项目ID不能为空' });
       }
       
-      const initialLength = temporaryProjects.length;
-      temporaryProjects = temporaryProjects.filter(p => p._id !== id);
-      const deletedCount = initialLength - temporaryProjects.length;
+      const initialLength = projectsStorage.length;
+      projectsStorage = projectsStorage.filter(p => p._id !== id);
+      const deletedCount = initialLength - projectsStorage.length;
       
       if (deletedCount === 0) {
         return res.status(404).json({ message: '项目未找到' });
