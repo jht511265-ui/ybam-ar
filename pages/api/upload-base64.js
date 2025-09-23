@@ -1,11 +1,26 @@
 // pages/api/upload-base64.js
 import { v2 as cloudinary } from 'cloudinary';
 
+// 配置 Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
+// 提取 base64 数据
+function extractBase64Data(dataUrl) {
+  if (!dataUrl) return null;
+  
+  if (dataUrl.startsWith('data:')) {
+    const matches = dataUrl.match(/^data:.+\/(.+);base64,(.*)$/);
+    if (matches && matches.length === 3) {
+      return matches[2]; // 返回纯base64数据
+    }
+  }
+  
+  return dataUrl; // 如果已经是纯base64，直接返回
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -29,15 +44,19 @@ export default async function handler(req, res) {
     }
 
     const uploadResults = {};
-    const uploadPromises = [];
-
+    
     // 检查 Cloudinary 配置
     const hasCloudinaryConfig = process.env.CLOUDINARY_CLOUD_NAME && 
                                process.env.CLOUDINARY_API_KEY && 
                                process.env.CLOUDINARY_API_SECRET;
 
     if (!hasCloudinaryConfig) {
-      console.warn('Cloudinary 配置缺失，使用模拟上传');
+      console.warn('❌ Cloudinary 配置缺失，使用模拟上传');
+      console.log('检查的环境变量:', {
+        CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME ? '已设置' : '未设置',
+        CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY ? '已设置' : '未设置',
+        CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET ? '已设置' : '未设置'
+      });
       
       // 模拟上传 - 添加延迟模拟真实上传
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -54,68 +73,89 @@ export default async function handler(req, res) {
         uploadResults.markerImage = 'https://via.placeholder.com/400x400/fdbb2d/000000?text=Marker+Image';
         uploadResults.markerImagePublicId = 'mock_marker_' + Date.now();
       }
-    } else {
-      console.log('使用真实 Cloudinary 上传');
       
-      // 真实上传 - 并行处理所有文件
-      if (files.originalImage) {
-        uploadPromises.push(
-          cloudinary.uploader.upload(files.originalImage, {
+      console.log('✅ 模拟上传完成');
+    } else {
+      console.log('✅ 使用真实 Cloudinary 上传');
+      
+      try {
+        // 真实上传 - 串行处理避免冲突
+        if (files.originalImage) {
+          console.log('开始上传原始图像...');
+          const base64Data = extractBase64Data(files.originalImage);
+          
+          if (!base64Data) {
+            throw new Error('原始图像数据格式错误');
+          }
+          
+          const result = await cloudinary.uploader.upload(`data:image/jpeg;base64,${base64Data}`, {
             folder: 'ar-projects/original-images',
             resource_type: 'image',
             transformation: [{ width: 800, height: 600, crop: 'limit' }]
-          }).then(result => {
-            uploadResults.originalImage = result.secure_url;
-            uploadResults.originalImagePublicId = result.public_id;
-            console.log('原始图像上传成功:', result.public_id);
-          })
-        );
-      }
+          });
+          
+          uploadResults.originalImage = result.secure_url;
+          uploadResults.originalImagePublicId = result.public_id;
+          console.log('✅ 原始图像上传成功:', result.public_id);
+        }
 
-      if (files.arVideo) {
-        uploadPromises.push(
-          cloudinary.uploader.upload(files.arVideo, {
+        if (files.arVideo) {
+          console.log('开始上传AR视频...');
+          const base64Data = extractBase64Data(files.arVideo);
+          
+          if (!base64Data) {
+            throw new Error('AR视频数据格式错误');
+          }
+          
+          const result = await cloudinary.uploader.upload(`data:video/mp4;base64,${base64Data}`, {
             folder: 'ar-projects/ar-videos',
             resource_type: 'video',
             chunk_size: 6000000 // 6MB chunks for large videos
-          }).then(result => {
-            uploadResults.videoURL = result.secure_url;
-            uploadResults.videoPublicId = result.public_id;
-            console.log('AR视频上传成功:', result.public_id);
-          })
-        );
-      }
+          });
+          
+          uploadResults.videoURL = result.secure_url;
+          uploadResults.videoPublicId = result.public_id;
+          console.log('✅ AR视频上传成功:', result.public_id);
+        }
 
-      if (files.markerImage) {
-        uploadPromises.push(
-          cloudinary.uploader.upload(files.markerImage, {
+        if (files.markerImage) {
+          console.log('开始上传标记图像...');
+          const base64Data = extractBase64Data(files.markerImage);
+          
+          if (!base64Data) {
+            throw new Error('标记图像数据格式错误');
+          }
+          
+          const result = await cloudinary.uploader.upload(`data:image/jpeg;base64,${base64Data}`, {
             folder: 'ar-projects/marker-images',
             resource_type: 'image',
             transformation: [{ width: 400, height: 400, crop: 'limit' }]
-          }).then(result => {
-            uploadResults.markerImage = result.secure_url;
-            uploadResults.markerImagePublicId = result.public_id;
-            console.log('标记图像上传成功:', result.public_id);
-          })
-        );
-      }
-
-      // 等待所有文件上传完成
-      if (uploadPromises.length > 0) {
-        await Promise.all(uploadPromises);
+          });
+          
+          uploadResults.markerImage = result.secure_url;
+          uploadResults.markerImagePublicId = result.public_id;
+          console.log('✅ 标记图像上传成功:', result.public_id);
+        }
+      } catch (uploadError) {
+        console.error('❌ Cloudinary 上传错误:', uploadError);
+        throw new Error(`文件上传到 Cloudinary 失败: ${uploadError.message}`);
       }
     }
 
-    console.log('=== 文件上传完成 ===', uploadResults);
+    console.log('=== 文件上传完成 ===', {
+      originalImage: uploadResults.originalImage ? '成功' : '失败',
+      videoURL: uploadResults.videoURL ? '成功' : '失败',
+      markerImage: uploadResults.markerImage ? '成功' : '失败'
+    });
 
     res.status(200).json({
       success: true,
-      message: `成功上传 ${Object.keys(uploadResults).length} 个文件`,
+      message: `成功上传 ${Object.keys(uploadResults).filter(k => uploadResults[k]).length} 个文件`,
       data: uploadResults
     });
 
   } catch (error) {
-    console.error('文件上传错误:', error);
+    console.error('❌ 文件上传错误:', error);
     res.status(500).json({
       success: false,
       error: '文件上传失败',
