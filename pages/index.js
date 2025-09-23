@@ -24,6 +24,7 @@ export default function Home() {
   const canvasRef = useRef(null);
   const router = useRouter();
 
+  // 只在客户端执行
   useEffect(() => {
     setIsClient(true);
     
@@ -282,13 +283,28 @@ export default function Home() {
     setIsLoggedIn(false);
   };
 
+  // 服务端渲染时显示简单的加载界面
   if (!isClient) {
     return (
       <div className="container">
+        <Head>
+          <title>马佛青文化委员会AR项目管理系统</title>
+          <meta name="description" content="马佛青文化委员会AR项目管理系统 - 体验增强现实的佛法传播" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+          <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+        </Head>
         <div className="loading-screen">
           <div className="spinner"></div>
           <p>加载中...</p>
         </div>
+        <style jsx global>{`
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d); min-height: 100vh; color: #fff; }
+          .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+          .loading-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+          .spinner { width: 50px; height: 50px; border: 5px solid rgba(255,255,255,0.3); border-top: 5px solid #fdbb2d; border-radius: 50%; animation: spin 1s linear infinite; }
+          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        `}</style>
       </div>
     );
   }
