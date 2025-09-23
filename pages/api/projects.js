@@ -16,7 +16,6 @@ export default async function handler(req, res) {
     console.log('=== Projects API 被调用 ===');
     console.log('方法:', req.method);
     console.log('URL:', req.url);
-    console.log('请求头 authorization:', req.headers.authorization ? '存在' : '不存在');
     
     // 对于GET请求，不需要验证token
     if (req.method !== 'GET') {
@@ -44,7 +43,6 @@ export default async function handler(req, res) {
     } 
     else if (req.method === 'POST') {
       console.log('🆕 创建新项目请求');
-      console.log('请求体:', req.body);
       
       if (!req.body) {
         console.log('❌ 请求体为空');
@@ -53,37 +51,73 @@ export default async function handler(req, res) {
       
       const { name, originalImage, videoURL, markerImage, cloudinaryData } = req.body;
       
+      // 详细的验证和日志
+      console.log('📦 接收到的项目数据:', {
+        名称: name,
+        图像: originalImage ? '已提供' : '缺失',
+        视频: videoURL ? '已提供' : '缺失',
+        标记: markerImage ? '已提供' : '缺失'
+      });
+      
       if (!name || !originalImage || !videoURL) {
-        console.log('❌ 缺少必要字段:', { name: !!name, originalImage: !!originalImage, videoURL: !!videoURL });
-        return res.status(400).json({ message: '请填写项目名称并上传所有必需文件' });
+        console.log('❌ 缺少必要字段:', { 
+          name: !!name, 
+          originalImage: !!originalImage, 
+          videoURL: !!videoURL 
+        });
+        return res.status(400).json({ 
+          message: '请填写项目名称并上传所有必需文件',
+          missing: {
+            name: !name,
+            originalImage: !originalImage,
+            videoURL: !videoURL
+          }
+        });
+      }
+      
+      // 验证URL格式
+      if (originalImage && !originalImage.startsWith('http')) {
+        console.warn('⚠️ 原始图像URL格式可能有问题:', originalImage);
+      }
+      if (videoURL && !videoURL.startsWith('http')) {
+        console.warn('⚠️ 视频URL格式可能有问题:', videoURL);
       }
       
       // 生成项目ID - 统一使用 project_ 前缀
-      const projectId = `project_${Date.now()}`;
+      const projectId = `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
       const project = {
         _id: projectId,
-        name,
+        name: name.trim(),
         originalImage,
         videoURL,
         markerImage: markerImage || originalImage,
         cloudinaryData: cloudinaryData || {},
-        status: '已发布',
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         createdBy: 'admin'
       };
       
       console.log('📤 准备保存项目:', projectId);
+      console.log('项目数据:', {
+        name: project.name,
+        image: project.originalImage?.substring(0, 50) + '...',
+        video: project.videoURL?.substring(0, 50) + '...'
+      });
       
       const saveResult = await CloudinaryStorage.saveProject(project);
       
       if (!saveResult.success) {
         console.log('❌ 保存项目失败:', saveResult.error);
-        throw new Error('保存项目失败: ' + saveResult.error);
+        return res.status(500).json({ 
+          message: '保存项目失败',
+          error: saveResult.error 
+        });
       }
       
       console.log('✅ 项目创建成功:', projectId);
+      console.log('Cloudinary Public ID:', saveResult.publicId);
       
       return res.status(201).json(project);
     }
@@ -100,16 +134,31 @@ export default async function handler(req, res) {
       
       console.log('准备删除项目ID:', id);
       
+      // 先验证项目是否存在
+      const projects = await CloudinaryStorage.getAllProjects();
+      const projectExists = projects.some(p => p._id === id);
+      
+      if (!projectExists) {
+        console.log('❌ 项目不存在:', id);
+        return res.status(404).json({ message: '项目不存在' });
+      }
+      
       const deleteResult = await CloudinaryStorage.deleteProject(id);
       
       if (!deleteResult.success) {
         console.log('❌ 删除项目失败:', deleteResult.error);
-        return res.status(404).json({ message: '项目删除失败: ' + deleteResult.error });
+        return res.status(500).json({ 
+          message: '项目删除失败',
+          error: deleteResult.error 
+        });
       }
       
       console.log('✅ 项目删除成功:', id);
       
-      return res.status(200).json({ message: '项目删除成功' });
+      return res.status(200).json({ 
+        message: '项目删除成功',
+        deletedId: id 
+      });
     }
     else {
       console.log('❌ 方法不允许:', req.method);
@@ -119,7 +168,8 @@ export default async function handler(req, res) {
     console.error('💥 Projects API 错误:', error);
     return res.status(500).json({ 
       message: '服务器内部错误',
-      error: error.message
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }
