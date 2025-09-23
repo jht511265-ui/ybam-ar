@@ -17,22 +17,20 @@ export default async function handler(req, res) {
     console.log('方法:', req.method);
     console.log('URL:', req.url);
     
-    // 对于GET请求，不需要验证token
-    if (req.method !== 'GET') {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        console.log('❌ 未授权访问: 缺少token');
-        return res.status(401).json({ message: '未授权访问' });
-      }
-      
-      const token = authHeader.split(' ')[1];
-      try {
-        const decoded = verifyToken(token);
-        console.log('✅ Token验证成功，用户:', decoded.username);
-      } catch (error) {
-        console.log('❌ Token无效:', error.message);
-        return res.status(401).json({ message: 'Token无效' });
-      }
+    // 对于所有请求都需要验证token（包括GET）
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('❌ 未授权访问: 缺少token');
+      return res.status(401).json({ message: '未授权访问' });
+    }
+    
+    const token = authHeader.split(' ')[1];
+    try {
+      const decoded = verifyToken(token);
+      console.log('✅ Token验证成功，用户:', decoded.username);
+    } catch (error) {
+      console.log('❌ Token无效:', error.message);
+      return res.status(401).json({ message: 'Token无效' });
     }
     
     if (req.method === 'GET') {
@@ -125,25 +123,31 @@ export default async function handler(req, res) {
       console.log('🗑️ 删除项目请求');
       console.log('请求体:', req.body);
       
-      const { id } = req.body;
+      // 修复：从查询参数获取ID，兼容请求体方式
+      let projectId = req.body?.id;
       
-      if (!id) {
+      // 如果没有在body中找到，尝试从查询参数获取
+      if (!projectId && req.query.id) {
+        projectId = req.query.id;
+      }
+      
+      if (!projectId) {
         console.log('❌ 项目ID为空');
         return res.status(400).json({ message: '项目ID不能为空' });
       }
       
-      console.log('准备删除项目ID:', id);
+      console.log('准备删除项目ID:', projectId);
       
       // 先验证项目是否存在
       const projects = await CloudinaryStorage.getAllProjects();
-      const projectExists = projects.some(p => p._id === id);
+      const projectExists = projects.some(p => p._id === projectId);
       
       if (!projectExists) {
-        console.log('❌ 项目不存在:', id);
+        console.log('❌ 项目不存在:', projectId);
         return res.status(404).json({ message: '项目不存在' });
       }
       
-      const deleteResult = await CloudinaryStorage.deleteProject(id);
+      const deleteResult = await CloudinaryStorage.deleteProject(projectId);
       
       if (!deleteResult.success) {
         console.log('❌ 删除项目失败:', deleteResult.error);
@@ -153,11 +157,11 @@ export default async function handler(req, res) {
         });
       }
       
-      console.log('✅ 项目删除成功:', id);
+      console.log('✅ 项目删除成功:', projectId);
       
       return res.status(200).json({ 
         message: '项目删除成功',
-        deletedId: id 
+        deletedId: projectId 
       });
     }
     else {
