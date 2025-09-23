@@ -288,6 +288,7 @@ export default function Admin() {
     }
   };
 
+  // 修复删除函数
   const handleDelete = async (id) => {
     if (!confirm('确定要删除这个项目吗？此操作不可恢复。') || !authToken) return;
 
@@ -295,13 +296,12 @@ export default function Admin() {
     setMessage('正在删除项目...');
 
     try {
-      const response = await fetch('/api/projects', {
+      // 使用查询参数方式发送DELETE请求
+      const response = await fetch(`/api/projects?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
-        },
-        body: JSON.stringify({ id })
+        }
       });
 
       if (response.ok) {
@@ -310,8 +310,8 @@ export default function Admin() {
         setMessage('✅ 项目删除成功！');
         setTimeout(() => setMessage(''), 3000);
       } else {
-        const error = await response.json();
-        setMessage('删除失败: ' + error.message);
+        const errorData = await response.json();
+        setMessage('删除失败: ' + (errorData.message || response.statusText));
       }
     } catch (error) {
       console.error('删除项目失败:', error);
