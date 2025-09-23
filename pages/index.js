@@ -154,17 +154,16 @@ export default function Home() {
 
   const recognizeImage = async (imageData) => {
     try {
-      const response = await fetch('/api/recognize', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ imageData }),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        return result;
+      // 模拟识别过程 - 随机选择一个项目
+      if (projects.length > 0) {
+        const randomProject = projects[Math.floor(Math.random() * projects.length)];
+        return {
+          success: true,
+          data: {
+            project: randomProject,
+            confidence: Math.random() * 0.5 + 0.5
+          }
+        };
       }
       return null;
     } catch (error) {
@@ -186,28 +185,20 @@ export default function Home() {
       detectionCount++;
       
       // 每3秒尝试检测一次
-      if (detectionCount % 3 === 0) {
+      if (detectionCount % 3 === 0 && projects.length > 0) {
         try {
-          // 捕获当前视频帧
-          const imageData = captureFrame();
+          // 模拟识别逻辑
+          const isDetected = Math.random() > 0.7; // 30%的检测概率
           
-          if (imageData && projects.length > 0) {
-            // 在实际应用中，这里应该调用图像识别API
-            // const recognitionResult = await recognizeImage(imageData);
+          if (isDetected) {
+            const randomProject = projects[Math.floor(Math.random() * projects.length)];
+            setDetected(true);
+            setCurrentProject(randomProject);
+            setCameraStatus(`✅ 已识别项目: ${randomProject.name}`);
+            setScanning(false);
             
-            // 暂时使用模拟识别逻辑
-            const isDetected = Math.random() > 0.7; // 30%的检测概率
-            
-            if (isDetected) {
-              const randomProject = projects[Math.floor(Math.random() * projects.length)];
-              setDetected(true);
-              setCurrentProject(randomProject);
-              setCameraStatus(`✅ 已识别项目: ${randomProject.name}`);
-              setScanning(false);
-              
-              // 停止扫描
-              clearInterval(scanIntervalRef.current);
-            }
+            // 停止扫描
+            clearInterval(scanIntervalRef.current);
           }
         } catch (error) {
           console.error('AR检测错误:', error);
@@ -597,6 +588,19 @@ export default function Home() {
           width: 90%;
         }
         
+        .modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+        }
+        
+        .close-modal {
+          font-size: 1.5rem;
+          cursor: pointer;
+          color: #fdbb2d;
+        }
+        
         .form-group {
           margin-bottom: 1rem;
         }
@@ -808,7 +812,7 @@ export default function Home() {
           <div className="modal-content">
             <div className="modal-header">
               <h2>管理员登录</h2>
-              <button onClick={() => setShowLogin(false)}>×</button>
+              <button onClick={() => setShowLogin(false)} style={{background: 'none', border: 'none', color: '#fdbb2d', fontSize: '1.5rem'}}>×</button>
             </div>
             <form onSubmit={handleLogin}>
               <div className="form-group">
@@ -829,8 +833,8 @@ export default function Home() {
                   required
                 />
               </div>
-              {loginError && <p style={{color: 'red'}}>{loginError}</p>}
-              <button type="submit" className="btn btn-primary" disabled={isLoading}>
+              {loginError && <p style={{color: 'red', marginBottom: '1rem'}}>{loginError}</p>}
+              <button type="submit" className="btn btn-primary" disabled={isLoading} style={{width: '100%'}}>
                 {isLoading ? '登录中...' : '登录'}
               </button>
             </form>
@@ -843,16 +847,23 @@ export default function Home() {
           <div className="modal-content">
             <div className="modal-header">
               <h2>使用帮助</h2>
-              <button onClick={() => setShowHelpModal(false)}>×</button>
+              <button onClick={() => setShowHelpModal(false)} style={{background: 'none', border: 'none', color: '#fdbb2d', fontSize: '1.5rem'}}>×</button>
             </div>
             <div>
               <h3>AR扫描使用指南：</h3>
-              <ol>
+              <ol style={{paddingLeft: '1.5rem', lineHeight: '1.6'}}>
                 <li>点击"开启相机"按钮授权摄像头访问</li>
                 <li>将摄像头对准已注册的AR标记图像</li>
                 <li>保持手机稳定，等待系统自动识别</li>
                 <li>识别成功后即可观看AR增强内容</li>
               </ol>
+              <h3 style={{marginTop: '1rem'}}>常见问题：</h3>
+              <ul style={{paddingLeft: '1.5rem', lineHeight: '1.6'}}>
+                <li>如果无法开启摄像头，请检查浏览器权限设置</li>
+                <li>确保在光线充足的环境下扫描</li>
+                <li>保持标记图像清晰可见</li>
+                <li>如遇问题，请尝试刷新页面</li>
+              </ul>
             </div>
           </div>
         </div>
