@@ -2,6 +2,15 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 
+// 工具函数
+const getDefaultImage = (text = '图片', width = 80, height = 60) => {
+  return `https://via.placeholder.com/${width}x${height}/4e54c8/ffffff?text=${encodeURIComponent(text)}`;
+};
+
+const getDefaultVideo = () => {
+  return 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+};
+
 export default function Admin() {
   const [projects, setProjects] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -25,8 +34,6 @@ export default function Admin() {
     arVideo: '',
     markerImage: ''
   });
-  const [testingStorage, setTestingStorage] = useState(false);
-  const [debugInfo, setDebugInfo] = useState('');
   const router = useRouter();
 
   useEffect(() => {
@@ -45,9 +52,8 @@ export default function Admin() {
     try {
       setIsLoading(true);
       setMessage('正在从 Cloudinary 加载项目...');
-      setDebugInfo('开始获取项目列表...');
       
-      console.log('🎯 开始获取项目列表');
+      console.log('开始获取项目列表');
       
       const response = await fetch('/api/projects', {
         headers: {
@@ -55,13 +61,11 @@ export default function Admin() {
         }
       });
 
-      console.log('📡 获取项目响应状态:', response.status);
-      setDebugInfo(`API响应状态: ${response.status}`);
+      console.log('获取项目响应状态:', response.status);
 
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ 获取到的项目数据:', data);
-        setDebugInfo(`成功获取 ${data.length} 个项目`);
+        console.log('获取到的项目数据:', data);
         
         // 确保数据是数组
         const projectsArray = Array.isArray(data) ? data : [];
@@ -70,16 +74,13 @@ export default function Admin() {
         setMessage(`成功加载 ${projectsArray.length} 个项目`);
         setTimeout(() => setMessage(''), 3000);
       } else if (response.status === 401) {
-        setDebugInfo('认证失败，重新登录');
         handleLogout();
       } else {
         const errorText = await response.text();
-        setDebugInfo(`获取失败: ${response.status} - ${errorText}`);
         setMessage(`获取项目失败: ${response.status} - ${errorText}`);
       }
     } catch (error) {
-      console.error('❌ 获取项目失败:', error);
-      setDebugInfo(`网络错误: ${error.message}`);
+      console.error('获取项目失败:', error);
       setMessage('网络错误，请重试: ' + error.message);
     } finally {
       setIsLoading(false);
@@ -114,7 +115,7 @@ export default function Admin() {
         [fieldName]: previewUrl
       }));
 
-      console.log(`📁 文件选择: ${fieldName} - ${file.name}`);
+      console.log(`文件选择: ${fieldName} - ${file.name}`);
     }
   };
 
@@ -132,20 +133,19 @@ export default function Admin() {
 
     // 将文件转换为 base64
     if (files.originalImage) {
-      console.log('📤 转换原始图像为 base64');
+      console.log('转换原始图像为 base64');
       filesBase64.originalImage = await fileToBase64(files.originalImage);
     }
     if (files.arVideo) {
-      console.log('📤 转换AR视频为 base64');
+      console.log('转换AR视频为 base64');
       filesBase64.arVideo = await fileToBase64(files.arVideo);
     }
     if (files.markerImage) {
-      console.log('📤 转换标记图像为 base64');
+      console.log('转换标记图像为 base64');
       filesBase64.markerImage = await fileToBase64(files.markerImage);
     }
 
-    console.log('🚀 准备上传文件到 Cloudinary:', Object.keys(filesBase64));
-    setDebugInfo('正在上传文件到 Cloudinary...');
+    console.log('准备上传文件到 Cloudinary:', Object.keys(filesBase64));
 
     // 调用 base64 上传接口
     const response = await fetch('/api/upload-base64', {
@@ -156,8 +156,7 @@ export default function Admin() {
       body: JSON.stringify({ files: filesBase64 }),
     });
 
-    console.log('📡 Cloudinary 上传响应状态:', response.status);
-    setDebugInfo(`文件上传响应: ${response.status}`);
+    console.log('Cloudinary 上传响应状态:', response.status);
 
     if (!response.ok) {
       const errorData = await response.json();
@@ -167,93 +166,28 @@ export default function Admin() {
     return await response.json();
   };
 
-  const testCloudinaryStorage = async () => {
-    if (!authToken) return;
-    
-    setTestingStorage(true);
-    setMessage('正在测试 Cloudinary 存储...');
-    setDebugInfo('开始存储测试...');
-    
-    try {
-      const response = await fetch('/api/test-storage');
-      const result = await response.json();
-      
-      console.log('🧪 存储测试结果:', result);
-      setDebugInfo(`存储测试: ${result.success ? '成功' : '失败'}`);
-      
-      if (response.ok) {
-        setMessage(`存储测试成功: ${result.message} (找到 ${result.projectsCount} 个项目)`);
-        
-        // 如果测试发现有项目但列表为空，自动刷新列表
-        if (result.projectsCount > 0 && projects.length === 0) {
-          setMessage('检测到存储中有项目，正在刷新列表...');
-          await fetchProjects(authToken);
-        }
-      } else {
-        setMessage(`存储测试失败: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('❌ 存储测试错误:', error);
-      setDebugInfo(`测试错误: ${error.message}`);
-      setMessage('存储测试错误: ' + error.message);
-    } finally {
-      setTestingStorage(false);
-      setTimeout(() => setMessage(''), 5000);
-    }
-  };
-
-  const testDebugAPI = async () => {
-    try {
-      setMessage('测试调试API...');
-      setDebugInfo('开始调试API测试...');
-      
-      const response = await fetch('/api/debug-create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name: '测试项目', test: true })
-      });
-      
-      const result = await response.json();
-      console.log('🐛 调试API结果:', result);
-      setDebugInfo(`调试API: ${response.status} - ${JSON.stringify(result)}`);
-      setMessage(`调试API测试: ${response.status === 201 ? '成功' : '失败'}`);
-      
-    } catch (error) {
-      console.error('❌ 调试API错误:', error);
-      setDebugInfo(`调试错误: ${error.message}`);
-      setMessage('调试API错误: ' + error.message);
-    }
-  };
-
   const handleCreate = async (e) => {
     e.preventDefault();
     
-    console.log('🎯 开始创建项目流程');
-    setDebugInfo('开始创建项目流程...');
+    console.log('开始创建项目流程');
     
     if (!authToken) {
       setMessage('请先登录');
-      setDebugInfo('错误: 未登录');
       return;
     }
 
     // 基本验证
     if (!formData.name?.trim()) {
       setMessage('请填写项目名称');
-      setDebugInfo('错误: 项目名称为空');
       return;
     }
 
     setIsLoading(true);
     setUploading(true);
     setMessage('');
-    setDebugInfo('初始化创建流程...');
 
     try {
       console.log('1. 开始文件上传流程');
-      setDebugInfo('步骤1: 检查文件上传');
       
       let projectData = {
         name: formData.name.trim()
@@ -262,7 +196,6 @@ export default function Admin() {
       // 文件上传
       if (formData.originalImage || formData.arVideo) {
         setMessage('正在上传文件到 Cloudinary...');
-        setDebugInfo('步骤2: 上传文件中...');
         
         console.log('2. 准备上传文件:', {
           image: formData.originalImage?.name,
@@ -276,7 +209,6 @@ export default function Admin() {
         });
 
         console.log('3. 文件上传结果:', uploadResult);
-        setDebugInfo(`步骤3: 文件上传${uploadResult.success ? '成功' : '失败'}`);
 
         if (!uploadResult.success) {
           throw new Error(uploadResult.error || '文件上传失败');
@@ -295,17 +227,15 @@ export default function Admin() {
         };
       } else {
         // 如果没有文件，使用默认值
-        setDebugInfo('步骤2: 使用默认文件');
         projectData = {
           ...projectData,
-          originalImage: 'https://via.placeholder.com/800x600/4e54c8/ffffff?text=默认图像',
-          videoURL: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-          markerImage: 'https://via.placeholder.com/400x400/fdbb2d/000000?text=标记图像'
+          originalImage: getDefaultImage('默认图像', 800, 600),
+          videoURL: getDefaultVideo(),
+          markerImage: getDefaultImage('标记图像', 400, 400)
         };
       }
 
       console.log('4. 准备发送项目数据:', projectData);
-      setDebugInfo('步骤4: 准备发送项目数据');
       setMessage('正在保存项目到 Cloudinary...');
 
       // 发送创建项目请求
@@ -319,8 +249,6 @@ export default function Admin() {
       });
 
       console.log('5. API响应状态:', response.status);
-      console.log('6. API响应URL:', response.url);
-      setDebugInfo(`步骤5: API响应状态 ${response.status}`);
 
       if (!response.ok) {
         let errorText;
@@ -329,18 +257,15 @@ export default function Admin() {
         } catch {
           errorText = '无法读取错误信息';
         }
-        console.error('7. API错误详情:', { 
+        console.error('API错误详情:', { 
           status: response.status, 
-          statusText: response.statusText,
           text: errorText 
         });
-        setDebugInfo(`步骤6: 错误 ${response.status} - ${errorText}`);
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
       const responseData = await response.json();
-      console.log('8. 项目创建成功:', responseData);
-      setDebugInfo('步骤6: 项目创建成功!');
+      console.log('6. 项目创建成功:', responseData);
 
       // 成功处理
       setShowCreateModal(false);
@@ -349,15 +274,13 @@ export default function Admin() {
       setFileNames({ originalImage: '', arVideo: '', markerImage: '' });
       
       setMessage('✅ 项目创建成功！');
-      setDebugInfo('项目创建流程完成');
       
       // 刷新项目列表
       setTimeout(() => setMessage(''), 3000);
       await fetchProjects(authToken);
       
     } catch (error) {
-      console.error('💥 创建项目失败:', error);
-      setDebugInfo(`错误: ${error.message}`);
+      console.error('创建项目失败:', error);
       setMessage(`❌ 创建失败: ${error.message}`);
     } finally {
       setIsLoading(false);
@@ -370,7 +293,6 @@ export default function Admin() {
 
     setIsLoading(true);
     setMessage('正在删除项目...');
-    setDebugInfo(`开始删除项目: ${id}`);
 
     try {
       const response = await fetch('/api/projects', {
@@ -382,23 +304,19 @@ export default function Admin() {
         body: JSON.stringify({ id })
       });
 
-      console.log('🗑️ 删除响应状态:', response.status);
-      setDebugInfo(`删除响应: ${response.status}`);
+      console.log('删除响应状态:', response.status);
 
       if (response.ok) {
         setMessage('项目删除成功！正在刷新列表...');
-        setDebugInfo('删除成功，刷新列表');
         await fetchProjects(authToken);
         setMessage('✅ 项目删除成功！');
         setTimeout(() => setMessage(''), 3000);
       } else {
         const error = await response.json();
-        setDebugInfo(`删除失败: ${error.message}`);
         setMessage('删除失败: ' + error.message);
       }
     } catch (error) {
-      console.error('❌ 删除项目失败:', error);
-      setDebugInfo(`删除错误: ${error.message}`);
+      console.error('删除项目失败:', error);
       setMessage('删除失败，请重试: ' + error.message);
     } finally {
       setIsLoading(false);
@@ -411,7 +329,6 @@ export default function Admin() {
     setPreviewUrls({ originalImage: '', arVideo: '', markerImage: '' });
     setFileNames({ originalImage: '', arVideo: '', markerImage: '' });
     setMessage('');
-    setDebugInfo('');
   };
 
   // 文件上传组件
@@ -451,7 +368,7 @@ export default function Admin() {
               alt="预览" 
               style={{ maxWidth: '200px', marginTop: '10px' }}
               onError={(e) => {
-                e.target.src = 'https://via.placeholder.com/200x150/4e54c8/ffffff?text=预览加载失败';
+                e.target.src = getDefaultImage('预览加载失败', 200, 150);
               }}
             />
           )}
@@ -463,7 +380,7 @@ export default function Admin() {
   return (
     <div className="container">
       <Head>
-        <title>管理后台 - AR项目管理系统 (Cloudinary存储)</title>
+        <title>管理后台 - AR项目管理系统</title>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
       </Head>
 
@@ -547,26 +464,6 @@ export default function Admin() {
           transform: translateY(-2px);
         }
         
-        .btn-info {
-          background-color: #17a2b8;
-          color: white;
-        }
-        
-        .btn-info:hover {
-          background-color: #138496;
-          transform: translateY(-2px);
-        }
-        
-        .btn-warning {
-          background-color: #ffc107;
-          color: #212529;
-        }
-        
-        .btn-warning:hover {
-          background-color: #e0a800;
-          transform: translateY(-2px);
-        }
-        
         .btn:disabled {
           background-color: #6c757d;
           cursor: not-allowed;
@@ -584,14 +481,6 @@ export default function Admin() {
           justify-content: space-between;
           align-items: center;
           margin-bottom: 2rem;
-          flex-wrap: wrap;
-          gap: 1rem;
-        }
-        
-        .admin-actions {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
         }
         
         .message {
@@ -617,17 +506,6 @@ export default function Admin() {
           background-color: #d1ecf1;
           color: #0c5460;
           border: 1px solid #bee5eb;
-        }
-        
-        .debug-info {
-          background-color: rgba(0, 0, 0, 0.8);
-          color: #fdbb2d;
-          padding: 10px;
-          border-radius: 5px;
-          margin-bottom: 15px;
-          font-family: monospace;
-          font-size: 0.9rem;
-          border-left: 4px solid #fdbb2d;
         }
         
         .projects-table {
@@ -798,17 +676,12 @@ export default function Admin() {
             flex-direction: column;
             align-items: flex-start;
           }
-          
-          .admin-actions {
-            width: 100%;
-            justify-content: space-between;
-          }
         }
       `}</style>
 
       <div className="admin-container">
         <div className="admin-header">
-          <h1><i className="fas fa-cogs"></i> AR项目管理后台 (Cloudinary存储)</h1>
+          <h1><i className="fas fa-cogs"></i> AR项目管理后台</h1>
           <button className="btn btn-danger" onClick={handleLogout}>
             <i className="fas fa-sign-out-alt"></i> 退出登录
           </button>
@@ -819,45 +692,22 @@ export default function Admin() {
           <p>项目数据安全存储在 Cloudinary 云存储中，支持持久化和高可用性。</p>
         </div>
 
-        {debugInfo && (
-          <div className="debug-info">
-            <strong>调试信息:</strong> {debugInfo}
-          </div>
-        )}
-
         <div className="admin-content">
           <div className="admin-panel-header">
             <h2>项目管理</h2>
-            <div className="admin-actions">
-              <button 
-                className="btn btn-warning" 
-                onClick={testDebugAPI}
-                disabled={isLoading}
-              >
-                <i className="fas fa-bug"></i> 调试API
-              </button>
-              <button 
-                className="btn btn-info" 
-                onClick={testCloudinaryStorage}
-                disabled={testingStorage || isLoading}
-              >
-                <i className="fas fa-test"></i> 
-                {testingStorage ? '测试中...' : '测试存储'}
-              </button>
-              <button 
-                className="btn btn-primary" 
-                onClick={() => setShowCreateModal(true)}
-                disabled={isLoading}
-              >
-                <i className="fas fa-plus"></i> 创建新项目
-              </button>
-            </div>
+            <button 
+              className="btn btn-primary" 
+              onClick={() => setShowCreateModal(true)}
+              disabled={isLoading}
+            >
+              <i className="fas fa-plus"></i> 创建新项目
+            </button>
           </div>
 
           {message && (
             <div className={`message ${
               message.includes('成功') || message.includes('✅') ? 'success' : 
-              message.includes('失败') || message.includes('❌') || message.includes('错误') ? 'error' : 'info'
+              message.includes('失败') || message.includes('❌') ? 'error' : 'info'
             }`}>
               {message}
             </div>
@@ -882,7 +732,11 @@ export default function Admin() {
                 {projects.length === 0 ? (
                   <tr>
                     <td colSpan="5" style={{textAlign: 'center', padding: '2rem'}}>
-                      <i className="fas fa-inbox" style={{fontSize: '3rem', opacity: 0.5, marginBottom: '1rem'}}></i>
+                      <img 
+                        src={getDefaultImage('暂无数据', 120, 90)} 
+                        alt="暂无数据" 
+                        style={{marginBottom: '1rem', borderRadius: '10px'}}
+                      />
                       <p>暂无项目数据</p>
                       <p style={{fontSize: '0.9rem', opacity: 0.7}}>
                         请创建第一个项目或 
@@ -910,7 +764,7 @@ export default function Admin() {
                             alt="原始图像" 
                             style={{width: '80px', height: '60px', objectFit: 'cover', borderRadius: '5px'}}
                             onError={(e) => {
-                              e.target.src = 'https://via.placeholder.com/80x60/4e54c8/ffffff?text=图片加载失败';
+                              e.target.src = getDefaultImage('加载失败');
                             }}
                           />
                         )}
@@ -956,7 +810,7 @@ export default function Admin() {
           <div className="modal">
             <div className="modal-content">
               <div className="modal-header">
-                <h2>创建新项目 (Cloudinary存储)</h2>
+                <h2>创建新项目</h2>
                 <button className="close-modal" onClick={closeModal}>&times;</button>
               </div>
               <form onSubmit={handleCreate}>
@@ -1006,7 +860,7 @@ export default function Admin() {
                   disabled={isLoading || uploading}
                 >
                   <i className="fas fa-save"></i> 
-                  {uploading ? '上传中...' : isLoading ? '创建中...' : '创建项目到 Cloudinary'}
+                  {uploading ? '上传中...' : isLoading ? '创建中...' : '创建项目'}
                 </button>
               </form>
             </div>
