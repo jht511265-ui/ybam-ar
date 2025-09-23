@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 
-// 修复工具函数 - 使用可靠的占位符服务
+// 工具函数
 const getDefaultImage = (text = '图片', width = 80, height = 60) => {
-  // 使用更可靠的占位符服务
   return `https://placehold.co/${width}x${height}/4e54c8/ffffff/png?text=${encodeURIComponent(text)}`;
 };
 
@@ -68,9 +67,7 @@ export default function Admin() {
         const data = await response.json();
         console.log('获取到的项目数据:', data);
         
-        // 确保数据是数组
         const projectsArray = Array.isArray(data) ? data : [];
-        
         setProjects(projectsArray);
         setMessage(`成功加载 ${projectsArray.length} 个项目`);
         setTimeout(() => setMessage(''), 3000);
@@ -100,7 +97,7 @@ export default function Admin() {
     const file = e.target.files[0];
     if (file) {
       // 文件大小验证
-      const maxSize = fieldName === 'arVideo' ? 100 * 1024 * 1024 : 10 * 1024 * 1024; // 视频100MB，图片10MB
+      const maxSize = fieldName === 'arVideo' ? 100 * 1024 * 1024 : 10 * 1024 * 1024;
       if (file.size > maxSize) {
         setMessage(`❌ 文件大小超过限制: ${(file.size / 1024 / 1024).toFixed(2)}MB > ${(maxSize / 1024 / 1024).toFixed(2)}MB`);
         return;
@@ -171,7 +168,7 @@ export default function Admin() {
         console.log('转换原始图像...');
         try {
           filesBase64.originalImage = await fileToBase64(files.originalImage);
-          console.log('原始图像转换成功，大小:', filesBase64.originalImage.length);
+          console.log('原始图像转换成功');
         } catch (error) {
           errors.push(`原始图像转换失败: ${error.message}`);
         }
@@ -181,7 +178,7 @@ export default function Admin() {
         console.log('转换AR视频...');
         try {
           filesBase64.arVideo = await fileToBase64(files.arVideo);
-          console.log('AR视频转换成功，大小:', filesBase64.arVideo.length);
+          console.log('AR视频转换成功');
         } catch (error) {
           errors.push(`AR视频转换失败: ${error.message}`);
         }
@@ -233,6 +230,12 @@ export default function Admin() {
     e.preventDefault();
     
     console.log('=== 开始创建项目 ===');
+    console.log('表单数据:', {
+      名称: formData.name,
+      图像: formData.originalImage?.name,
+      视频: formData.arVideo?.name,
+      标记: formData.markerImage?.name
+    });
     
     if (!authToken) {
       setMessage('请先登录');
@@ -269,11 +272,7 @@ export default function Admin() {
       // 文件上传
       setMessage('正在准备文件上传...');
       
-      console.log('2. 准备上传的文件:', {
-        图像: formData.originalImage?.name,
-        视频: formData.arVideo?.name,
-        标记: formData.markerImage?.name
-      });
+      console.log('2. 准备上传的文件');
       
       const uploadResult = await uploadFilesToCloudinary({
         originalImage: formData.originalImage,
@@ -322,6 +321,7 @@ export default function Admin() {
         } catch (e) {
           errorText = `HTTP ${response.status}`;
         }
+        console.error('API错误详情:', errorText);
         throw new Error(`创建项目失败: ${errorText}`);
       }
 
@@ -397,23 +397,17 @@ export default function Admin() {
     setMessage('');
   };
 
-  // 修复图片错误处理函数
+  // 修复图片错误处理
   const handleImageError = (e, type = 'default') => {
     console.log(`图片加载失败，使用默认图片: ${type}`);
-    switch (type) {
-      case 'placeholder':
-        e.target.src = getDefaultImage('加载失败', 200, 150);
-        break;
-      case 'thumbnail':
-        e.target.src = getDefaultImage('缩略图', 80, 60);
-        break;
-      case 'no-data':
-        e.target.src = getDefaultImage('暂无数据', 120, 90);
-        break;
-      default:
-        e.target.src = getDefaultImage('图片', 80, 60);
-    }
-    e.target.onerror = null; // 防止循环错误
+    const defaultImages = {
+      placeholder: getDefaultImage('加载失败', 200, 150),
+      thumbnail: getDefaultImage('缩略图', 80, 60),
+      'no-data': getDefaultImage('暂无数据', 120, 90),
+      default: getDefaultImage('图片', 80, 60)
+    };
+    e.target.src = defaultImages[type] || defaultImages.default;
+    e.target.onerror = null;
   };
 
   const handleVideoError = (e) => {
@@ -422,14 +416,16 @@ export default function Admin() {
     e.target.onerror = null;
   };
 
-  // 文件上传组件
+  // 修复文件上传组件 - 添加必要的属性
   const FileUploadField = ({ label, fieldName, accept, required = false }) => (
     <div className="form-group">
-      <label>{label} {required && <span style={{color: 'red'}}>*</span>}</label>
+      <label htmlFor={`${fieldName}-input`}>
+        {label} {required && <span style={{color: 'red'}}>*</span>}
+      </label>
       <div className="file-input-wrapper">
         <input
           type="file"
-          id={fieldName}
+          id={`${fieldName}-input`}
           name={fieldName}
           accept={accept}
           onChange={(e) => handleFileChange(e, fieldName)}
@@ -437,7 +433,7 @@ export default function Admin() {
           disabled={uploading}
           className="file-input"
         />
-        <label htmlFor={fieldName} className="file-input-label">
+        <label htmlFor={`${fieldName}-input`} className="file-input-label">
           <i className="fas fa-cloud-upload-alt"></i>
           {fileNames[fieldName] ? fileNames[fieldName] : '选择文件'}
         </label>
@@ -900,14 +896,19 @@ export default function Admin() {
               </div>
               <form onSubmit={handleCreate}>
                 <div className="form-group">
-                  <label>项目名称 <span style={{color: 'red'}}>*</span></label>
+                  <label htmlFor="project-name-input">
+                    项目名称 <span style={{color: 'red'}}>*</span>
+                  </label>
                   <input
                     type="text"
+                    id="project-name-input"
+                    name="projectName"
                     value={formData.name}
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
                     placeholder="输入项目名称"
                     required
                     disabled={uploading}
+                    autoComplete="off"
                   />
                 </div>
 
