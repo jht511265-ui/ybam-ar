@@ -3,7 +3,6 @@ import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
-// 固定用户
 const FIXED_USER = {
   username: 'admin2025',
   password: 'Tjh244466666',
@@ -11,7 +10,6 @@ const FIXED_USER = {
 };
 
 export default async function handler(req, res) {
-  // 设置CORS头
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -34,18 +32,13 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('🔍 正在验证用户:', username);
-
-    // 检查固定用户名和密码
     if (username !== FIXED_USER.username || password !== FIXED_USER.password) {
-      console.warn('❌ 用户名或密码错误');
       return res.status(401).json({ 
         success: false,
         message: '用户名或密码错误' 
       });
     }
 
-    // 生成token
     const token = jwt.sign(
       {
         userId: FIXED_USER.id,
@@ -54,8 +47,6 @@ export default async function handler(req, res) {
       JWT_SECRET,
       { expiresIn: '24h' }
     );
-
-    console.log('✅ 登录成功:', FIXED_USER.username);
 
     res.status(200).json({
       success: true,
@@ -67,7 +58,7 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('🔥 认证错误:', error);
+    console.error('认证错误:', error);
     res.status(500).json({ 
       success: false,
       message: '服务器内部错误'
