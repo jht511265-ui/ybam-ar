@@ -50,11 +50,25 @@ export default function Home() {
 
   const fetchProjects = async () => {
     try {
-      const response = await fetch('/api/projects');
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        console.log('未登录，跳过获取项目');
+        return;
+      }
+
+      const response = await fetch('/api/projects', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
       if (response.ok) {
         const data = await response.json();
         setProjects(data);
         console.log('加载项目数量:', data.length);
+      } else if (response.status === 401) {
+        console.log('Token过期，需要重新登录');
+        handleLogout();
       }
     } catch (error) {
       console.error('获取项目失败:', error);
@@ -101,7 +115,6 @@ export default function Home() {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         
-        // 等待视频准备就绪
         await new Promise((resolve) => {
           if (videoRef.current.readyState >= 3) {
             resolve();
@@ -132,44 +145,6 @@ export default function Home() {
         setCameraStatus('无法访问摄像头: ' + error.message);
       }
       setShowPermissionHelp(true);
-    }
-  };
-
-  const captureFrame = () => {
-    if (!videoRef.current || !canvasRef.current) return null;
-    
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
-    
-    // 设置canvas尺寸与视频一致
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    
-    // 绘制当前视频帧到canvas
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // 返回base64图像数据
-    return canvas.toDataURL('image/jpeg', 0.8);
-  };
-
-  const recognizeImage = async (imageData) => {
-    try {
-      // 模拟识别过程 - 随机选择一个项目
-      if (projects.length > 0) {
-        const randomProject = projects[Math.floor(Math.random() * projects.length)];
-        return {
-          success: true,
-          data: {
-            project: randomProject,
-            confidence: Math.random() * 0.5 + 0.5
-          }
-        };
-      }
-      return null;
-    } catch (error) {
-      console.error('图像识别错误:', error);
-      return null;
     }
   };
 
@@ -244,7 +219,8 @@ export default function Home() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/auth', {
+      // 修复API路径
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -254,7 +230,7 @@ export default function Home() {
 
       const data = await response.json();
 
-      if (response.ok) {
+      if (response.ok && data.success) {
         if (typeof window !== 'undefined') {
           localStorage.setItem('authToken', data.token);
           localStorage.setItem('user', JSON.stringify(data.user));
@@ -263,7 +239,8 @@ export default function Home() {
         setShowLogin(false);
         setUsername('');
         setPassword('');
-        router.push('/admin');
+        // 登录成功后刷新项目列表
+        fetchProjects();
       } else {
         setLoginError(data.message || '登录失败');
       }
@@ -713,9 +690,14 @@ export default function Home() {
         </div>
         <div className="auth-buttons">
           {isLoggedIn ? (
-            <button className="btn btn-secondary" onClick={handleLogout}>
-              <i className="fas fa-sign-out-alt"></i> 退出
-            </button>
+            <>
+              <button className="btn btn-primary" onClick={() => router.push('/admin')}>
+                <i className="fas fa-cogs"></i> 管理后台
+              </button>
+              <button className="btn btn-secondary" onClick={handleLogout}>
+                <i className="fas fa-sign-out-alt"></i> 退出
+              </button>
+            </>
           ) : (
             <button className="btn btn-secondary" onClick={() => setShowLogin(true)}>
               <i className="fas fa-user-lock"></i> 登录
