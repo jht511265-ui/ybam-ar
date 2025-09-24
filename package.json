@@ -15,7 +15,8 @@
     "next": "14.2.11",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "cloudinary": "^2.5.1"
+    "cloudinary": "^2.5.1",
+    "buffer": "^6.0.3"
   },
   "devDependencies": {
     "eslint": "8.57.0",
