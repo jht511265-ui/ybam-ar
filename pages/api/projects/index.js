@@ -1,6 +1,6 @@
 // pages/api/projects/index.js
 import { verifyToken } from '../../../middleware/auth';
-import { CloudinaryStorage } from '../../../../lib/cloudinary-storage';
+import { CloudinaryStorage } from '../../../lib/cloudinary-storage';  // 修复路径
 
 export default async function handler(req, res) {
   // 设置CORS头
