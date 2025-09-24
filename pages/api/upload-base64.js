@@ -8,6 +8,13 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+// 设置CORS头
+function setCorsHeaders(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
 // 提取 base64 数据
 function extractBase64Data(dataUrl) {
   if (!dataUrl) return null;
@@ -23,9 +30,7 @@ function extractBase64Data(dataUrl) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  setCorsHeaders(res);
   
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: '方法不允许' });
@@ -58,7 +63,7 @@ export default async function handler(req, res) {
         CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET ? '已设置' : '未设置'
       });
       
-      // 模拟上传 - 添加延迟模拟真实上传
+      // 模拟上传
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       if (files.originalImage) {
@@ -79,7 +84,7 @@ export default async function handler(req, res) {
       console.log('✅ 使用真实 Cloudinary 上传');
       
       try {
-        // 真实上传 - 串行处理避免冲突
+        // 真实上传 - 串行处理
         if (files.originalImage) {
           console.log('开始上传原始图像...');
           const base64Data = extractBase64Data(files.originalImage);
@@ -110,7 +115,7 @@ export default async function handler(req, res) {
           const result = await cloudinary.uploader.upload(`data:video/mp4;base64,${base64Data}`, {
             folder: 'ar-projects/ar-videos',
             resource_type: 'video',
-            chunk_size: 6000000 // 6MB chunks for large videos
+            chunk_size: 6000000
           });
           
           uploadResults.videoURL = result.secure_url;
@@ -142,11 +147,7 @@ export default async function handler(req, res) {
       }
     }
 
-    console.log('=== 文件上传完成 ===', {
-      originalImage: uploadResults.originalImage ? '成功' : '失败',
-      videoURL: uploadResults.videoURL ? '成功' : '失败',
-      markerImage: uploadResults.markerImage ? '成功' : '失败'
-    });
+    console.log('=== 文件上传完成 ===', uploadResults);
 
     res.status(200).json({
       success: true,
@@ -159,8 +160,7 @@ export default async function handler(req, res) {
     res.status(500).json({
       success: false,
       error: '文件上传失败',
-      message: error.message,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      message: error.message
     });
   }
 }
